@@ -6,10 +6,55 @@ import { collection, addDoc, onSnapshot, query, orderBy, Timestamp } from 'fireb
 // 💡 NEW IMPORTS: Capacitor Plugins
 import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
 import { Capacitor } from '@capacitor/core'; // To check platform
+import { AppGroupReader } from '../../plugins/appGroupReader';
+
 
 // !!! IMPORTANT: ADD YOUR GEMINI API KEY HERE !!!
 const GEMINI_API_KEY = "AIzaSyAZJOfCX_WZmXb1bD0lU0-8pn5LPCKNxGA";
 
+const getAppGroupReader = () => {
+    const cap = (window).Capacitor || Capacitor;
+    return cap?.Plugins?.AppGroupReader || (cap?.Plugins && cap.Plugins['AppGroupReader']);
+  };
+
+  const inferMimeFromName = (name = '') => {
+    const n = name.toLowerCase();
+    if (n.endsWith('.png')) return 'image/png';
+    if (n.endsWith('.webp')) return 'image/webp';
+    return 'image/jpeg';
+  };
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+    let cancelled = false;
+  
+    (async () => {
+      try {
+        const { files } = await AppGroupReader.list();
+        if (!files || !files.length) return;
+  
+        const name = files[0];
+        const { data } = await AppGroupReader.read({ name }); // base64
+        if (cancelled) return;
+  
+        const mime = name.toLowerCase().endsWith('.png') ? 'image/png'
+                  : name.toLowerCase().endsWith('.webp') ? 'image/webp'
+                  : 'image/jpeg';
+  
+        // Hook into your existing state + scan flow:
+        setBase64ImageData(data);
+        setImageMimeType(mime);
+        setFileName(name);
+        setScanStatusMessage('Shared image loaded. Tap Scan to process.');
+  
+        // Optionally delete it so it won't re-import next time:
+        // await AppGroupReader.remove({ name });
+      } catch (e) {
+        console.error('AppGroupReader error:', e);
+      }
+    })();
+  
+    return () => { cancelled = true; };
+  }, []);
 
 function AddExpense({ userId }) {
     const [categories, setCategories] = useState([]);
@@ -61,24 +106,110 @@ function AddExpense({ userId }) {
 
     // --- 2. useEffect for Handling Shared Images ---
     useEffect(() => {
-        // Only run this on native platforms
-        if (Capacitor.isNativePlatform()) {
-            const storedUrls = localStorage.getItem('sharedImageUrls');
-            if (storedUrls) {
-                try {
-                    const urls = JSON.parse(storedUrls);
-                    if (urls && urls.length > 0) {
-                        console.log("Processing shared image URL:", urls[0]);
-                        loadImageData(urls[0]); // Process the first image found
-                    }
-                } catch (e) {
-                    console.error("Error parsing sharedImageUrls from localStorage:", e);
-                } finally {
-                    localStorage.removeItem('sharedImageUrls'); // Clear the flag regardless
-                }
-            }
+        if (!Capacitor.isNativePlatform()) return;
+      
+        const reader = getAppGroupReader();
+        if (!reader) {
+          console.warn('AppGroupReader plugin not available.');
+          return;
         }
-    }, []); // Run only once on component mount
+      
+        let cancelled = false;
+      
+        (async () => {
+          try {
+            // 1) List files saved by the Share Extension
+            const { files } = await reader.list(); // e.g., ["A1B2.jpg"]
+            if (!files || !files.length) return;
+      
+            // We’ll just take the first pending file
+            const name = files[0];
+      
+            // 2) Read as Base64
+            const { data } = await reader.read({ name });
+            if (cancelled) return;
+      
+            // 3) Push into your existing scanner state
+            const mime = inferMimeFromName(name);
+            setBase64ImageData(data);       // <-- Base64 only
+            setImageMimeType(mime);
+            setFileName(name);
+            setScanStatusMessage("Shared image loaded. Scanning...");
+      
+            // OPTIONAL: auto-run scan + save flow
+            // Wait one tick to allow state to settle
+            setTimeout(async () => {
+              try {
+                // Auto-scan with Gemini
+                const extractedData = await callGeminiAPI(data, mime);
+      
+                setFormData(prev => ({
+                  ...prev,
+                  amount: extractedData.amount || '',
+                  payerName: extractedData.payerName || '',
+                  date: extractedData.date || formatDateKey(new Date()),
+                }));
+      
+                const extractedCategory = (extractedData.category || 'UNCATEGORIZED').toUpperCase();
+                const match = categories.find(c => c.name === extractedCategory);
+                if (match) {
+                  setFormData(prev => ({ ...prev, category: match.name, newCategory: '' }));
+                } else {
+                  setFormData(prev => ({ ...prev, category: '--OTHER--', newCategory: extractedCategory }));
+                }
+      
+                setScanStatusMessage("Scan complete! Saving transaction...");
+      
+                // Auto-save (reusing your existing Firestore logic)
+                // Build the same expenseData you use in handleSaveExpense:
+                const expenseData = {
+                  amount: parseFloat(extractedData.amount),
+                  payerName: (extractedData.payerName || '').trim(),
+                  category: match ? match.name : extractedCategory,
+                  timestamp: Timestamp.fromDate(new Date((extractedData.date || formatDateKey(new Date())) + 'T00:00:00')),
+                  userId: userId,
+                };
+      
+                await addDoc(collection(db, `users/${userId}/expenses`), expenseData);
+      
+                // Optionally add category if new
+                if (!match && extractedCategory) {
+                  const exists = categories.find(c => c.name === extractedCategory);
+                  if (!exists) {
+                    await addDoc(collection(db, `users/${userId}/categories`), {
+                      name: extractedCategory,
+                      keywords: [extractedCategory],
+                      createdAt: Timestamp.now(),
+                    });
+                  }
+                }
+      
+                setSaveStatus('success');
+                setScanStatusMessage("Saved ✓");
+      
+                // 4) (Important) Remove the file from App Group so it doesn’t re-import next launch
+                await reader.remove({ name });
+      
+                // Reset UI after a bit
+                setTimeout(() => {
+                  setSaveStatus(null);
+                  resetScannerState();
+                  setScanStatusMessage(null);
+                  setFormData({ amount: '', payerName: '', category: '', newCategory: '', date: formatDateKey(new Date()) });
+                }, 1200);
+              } catch (e) {
+                console.error('Auto scan/save failed:', e);
+                setScanStatusMessage(`Auto import failed: ${e.message}`);
+              }
+            }, 100);
+          } catch (e) {
+            console.error('AppGroupReader error:', e);
+          }
+        })();
+      
+        return () => { cancelled = true; };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+      }, [userId, categories.length]);
 
     // --- 3. Function to load image data from file URL (using Filesystem plugin) ---
     const loadImageData = async (fileUrl) => {
