@@ -1,0 +1,9 @@
+{
+  "appId": "com.personaldash.app",
+  "appName": "Just do it",
+  "webDir": "dist",
+  "server":{
+    "url": "https://bachelors-vs-life.web.app/",
+    "cleartext": false
+  }
+}
