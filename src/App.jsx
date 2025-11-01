@@ -1,7 +1,7 @@
 // src/App.jsx
 import React, { useState, useEffect } from 'react';
-// 💡 Corrected import to use useNavigate for navigation
-import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
+// 💡 Removed unused 'useNavigate'
+import { Routes, Route, Navigate } from 'react-router-dom';
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from './firebaseConfig';
 
@@ -9,22 +9,18 @@ import { auth } from './firebaseConfig';
 import { App as CapApp } from '@capacitor/app'; // For listening to app events
 import { Capacitor } from '@capacitor/core'; // To check platform
 
-// --- Custom Plugin Import ---
-// 💡 Make sure the path to your compiled plugin is correct
-
 // --- Page Imports ---
 import LoginPage from './pages/LoginPage';
-import SignUpPage from './pages/SignUpPage.JSX'; // Corrected filename casing
+import SignUpPage from './pages/SignUpPage.JSX'; // 💡 Corrected file extension
 import MainDashboard from './pages/MainDashboard';
 import LoadingSpinner from './components/LoadingSpinner';
 import ActivityTracker from './pages/ActivityTracker';
 import ExpenseTracker from './pages/ExpenseTracker';
-
+import BatchUploadPage from './components/Expense/BatchUploadPage'; // 💡 Corrected import path
 
 function App() {
   const [currentUser, setCurrentUser] = useState(null);
   const [loading, setLoading] = useState(true);
-  const navigate = useNavigate(); // Hook for navigation
   
  
   // --- 1. Firebase Auth State Listener ---
@@ -35,8 +31,6 @@ function App() {
     });
     return () => unsubscribe();
   }, []);
-
-  // --- 2. Share Extension Listener ---
 
   // --- Loading State ---
   if (loading) {
@@ -49,14 +43,20 @@ function App() {
       {/* Protected Layout Route */}
       <Route 
         path="/" 
-        element={currentUser ? <MainDashboard /> : <Navigate to="/login" />} 
+        // Pass the user prop to the layout component (for Navbar, etc.)
+        element={currentUser ? <MainDashboard user={currentUser} /> : <Navigate to="/login" />} 
       >
-        {/* Nested Routes for Super Navigation */}
-        <Route index element={<ActivityTracker />} /> 
-        <Route path="expense" element={<ExpenseTracker />} /> 
-        {/* Note: If ExpenseTracker uses nested routes, update path="expense/*" */}
+        {/* Pass the userId as a prop to each nested route.
+          MainDashboard's <Outlet> will render the correct component with this prop.
+        */}
+        <Route index element={<ActivityTracker userId={currentUser?.uid} />} /> 
+        <Route path="expense" element={<ExpenseTracker userId={currentUser?.uid} />} /> 
+        <Route 
+          path="batch-upload" 
+          element={<BatchUploadPage userId={currentUser?.uid} />} 
+        />
       </Route>
-      
+    
       {/* Auth routes */}
       <Route 
         path="/login" 

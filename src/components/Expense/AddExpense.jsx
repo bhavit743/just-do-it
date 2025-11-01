@@ -1,68 +1,30 @@
-// src/components/Expense/AddExpense.jsx
 import React, { useState, useEffect } from 'react';
+// 💡 Removed unused 'Outlet' and 'useLocation'
+import { useNavigate } from 'react-router-dom';
 import { db } from '../../firebaseConfig';
-import { collection, addDoc, onSnapshot, query, orderBy, Timestamp } from 'firebase/firestore';
+// 💡 Removed unused 'doc' and 'updateDoc'
+import { collection, addDoc, onSnapshot, query, orderBy, Timestamp } from 'firebase/firestore'; 
 
 // 💡 NEW IMPORTS: Capacitor Plugins
 import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
 import { Capacitor } from '@capacitor/core'; // To check platform
-import { AppGroupReader } from '../../plugins/appGroupReader';
-
+import { ShareExtension } from 'capacitor-share-extension';
 
 // !!! IMPORTANT: ADD YOUR GEMINI API KEY HERE !!!
 const GEMINI_API_KEY = "AIzaSyAZJOfCX_WZmXb1bD0lU0-8pn5LPCKNxGA";
 
-const getAppGroupReader = () => {
-    const cap = (window).Capacitor || Capacitor;
-    return cap?.Plugins?.AppGroupReader || (cap?.Plugins && cap.Plugins['AppGroupReader']);
-  };
+// 💡 REMOVED getAppGroupReader and inferMimeFromName (no longer used)
 
-  const inferMimeFromName = (name = '') => {
-    const n = name.toLowerCase();
-    if (n.endsWith('.png')) return 'image/png';
-    if (n.endsWith('.webp')) return 'image/webp';
-    return 'image/jpeg';
-  };
-  useEffect(() => {
-    if (!Capacitor.isNativePlatform()) return;
-    let cancelled = false;
   
-    (async () => {
-      try {
-        const { files } = await AppGroupReader.list();
-        if (!files || !files.length) return;
-  
-        const name = files[0];
-        const { data } = await AppGroupReader.read({ name }); // base64
-        if (cancelled) return;
-  
-        const mime = name.toLowerCase().endsWith('.png') ? 'image/png'
-                  : name.toLowerCase().endsWith('.webp') ? 'image/webp'
-                  : 'image/jpeg';
-  
-        // Hook into your existing state + scan flow:
-        setBase64ImageData(data);
-        setImageMimeType(mime);
-        setFileName(name);
-        setScanStatusMessage('Shared image loaded. Tap Scan to process.');
-  
-        // Optionally delete it so it won't re-import next time:
-        // await AppGroupReader.remove({ name });
-      } catch (e) {
-        console.error('AppGroupReader error:', e);
-      }
-    })();
-  
-    return () => { cancelled = true; };
-  }, []);
-
-function AddExpense({ userId }) {
+function AddExpense({ userId, expenseToEdit, onDone }) {
+    const navigate = useNavigate();
     const [categories, setCategories] = useState([]);
     const [loading, setLoading] = useState(true);
     const [formData, setFormData] = useState({
         amount: '', payerName: '', category: '', newCategory: '', date: formatDateKey(new Date()),
     });
     const [saveStatus, setSaveStatus] = useState(null);
+    const [isSaving, setIsSaving] = useState(false);
 
     // --- Image Scanning State ---
     const [base64ImageData, setBase64ImageData] = useState(null);
@@ -70,7 +32,10 @@ function AddExpense({ userId }) {
     const [fileName, setFileName] = useState("No file selected.");
     const [scanStatusMessage, setScanStatusMessage] = useState(null);
     const [isScanning, setIsScanning] = useState(false);
-    // --- End Scanning State ---
+    const [previewUrl, setPreviewUrl] = useState(null);
+
+    // 2. CREATE A VARIABLE FOR EDIT MODE
+    const isEditMode = Boolean(expenseToEdit);
 
     // Utility: Format date to YYYY-MM-DD
     function formatDateKey(date) {
@@ -83,9 +48,10 @@ function AddExpense({ userId }) {
         setImageMimeType(null);
         setFileName("No file selected.");
         setScanStatusMessage(null);
+        setPreviewUrl(null); // Also reset preview URL
         const fileInput = document.getElementById('file-upload');
         if (fileInput) {
-            fileInput.value = null; // Clear file input more reliably
+            fileInput.value = null; 
         }
     };
 
@@ -104,178 +70,71 @@ function AddExpense({ userId }) {
         return () => unsubscribe();
     }, [userId]);
 
-    // --- 2. useEffect for Handling Shared Images ---
+    // --- 2. useEffect for ShareExtension (This is the correct one) ---
     useEffect(() => {
-        if (!Capacitor.isNativePlatform()) return;
-      
-        const reader = getAppGroupReader();
-        if (!reader) {
-          console.warn('AppGroupReader plugin not available.');
-          return;
-        }
-      
+        // Don't run this if we're in edit mode
+        if (isEditMode) return; 
+        
         let cancelled = false;
       
-        (async () => {
+        const checkShare = async () => {
+          if (!Capacitor.isNativePlatform()) return;
+      
           try {
-            // 1) List files saved by the Share Extension
-            const { files } = await reader.list(); // e.g., ["A1B2.jpg"]
-            if (!files || !files.length) return;
+            const result = await ShareExtension.checkSendIntentReceived();
       
-            // We’ll just take the first pending file
-            const name = files[0];
+            if (result && result.payload && result.payload.length > 0) {
+              if (cancelled) return;
       
-            // 2) Read as Base64
-            const { data } = await reader.read({ name });
-            if (cancelled) return;
-      
-            // 3) Push into your existing scanner state
-            const mime = inferMimeFromName(name);
-            setBase64ImageData(data);       // <-- Base64 only
-            setImageMimeType(mime);
-            setFileName(name);
-            setScanStatusMessage("Shared image loaded. Scanning...");
-      
-            // OPTIONAL: auto-run scan + save flow
-            // Wait one tick to allow state to settle
-            setTimeout(async () => {
-              try {
-                // Auto-scan with Gemini
-                const extractedData = await callGeminiAPI(data, mime);
-      
-                setFormData(prev => ({
-                  ...prev,
-                  amount: extractedData.amount || '',
-                  payerName: extractedData.payerName || '',
-                  date: extractedData.date || formatDateKey(new Date()),
-                }));
-      
-                const extractedCategory = (extractedData.category || 'UNCATEGORIZED').toUpperCase();
-                const match = categories.find(c => c.name === extractedCategory);
-                if (match) {
-                  setFormData(prev => ({ ...prev, category: match.name, newCategory: '' }));
-                } else {
-                  setFormData(prev => ({ ...prev, category: '--OTHER--', newCategory: extractedCategory }));
+              const item = result.payload[0];
+              
+              if (!item.type || !item.type.startsWith('image')) {
+                if (Capacitor.getPlatform() === 'android') {
+                    await ShareExtension.finish();
                 }
-      
-                setScanStatusMessage("Scan complete! Saving transaction...");
-      
-                // Auto-save (reusing your existing Firestore logic)
-                // Build the same expenseData you use in handleSaveExpense:
-                const expenseData = {
-                  amount: parseFloat(extractedData.amount),
-                  payerName: (extractedData.payerName || '').trim(),
-                  category: match ? match.name : extractedCategory,
-                  timestamp: Timestamp.fromDate(new Date((extractedData.date || formatDateKey(new Date())) + 'T00:00:00')),
-                  userId: userId,
-                };
-      
-                await addDoc(collection(db, `users/${userId}/expenses`), expenseData);
-      
-                // Optionally add category if new
-                if (!match && extractedCategory) {
-                  const exists = categories.find(c => c.name === extractedCategory);
-                  if (!exists) {
-                    await addDoc(collection(db, `users/${userId}/categories`), {
-                      name: extractedCategory,
-                      keywords: [extractedCategory],
-                      createdAt: Timestamp.now(),
-                    });
-                  }
-                }
-      
-                setSaveStatus('success');
-                setScanStatusMessage("Saved ✓");
-      
-                // 4) (Important) Remove the file from App Group so it doesn’t re-import next launch
-                await reader.remove({ name });
-      
-                // Reset UI after a bit
-                setTimeout(() => {
-                  setSaveStatus(null);
-                  resetScannerState();
-                  setScanStatusMessage(null);
-                  setFormData({ amount: '', payerName: '', category: '', newCategory: '', date: formatDateKey(new Date()) });
-                }, 1200);
-              } catch (e) {
-                console.error('Auto scan/save failed:', e);
-                setScanStatusMessage(`Auto import failed: ${e.message}`);
+                return;
               }
-            }, 100);
-          } catch (e) {
-            console.error('AppGroupReader error:', e);
-          }
-        })();
       
-        return () => { cancelled = true; };
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-      }, [userId, categories.length]);
+              const filePath = decodeURIComponent(item.url);
+              
+              const fileData = await Filesystem.readFile({
+                path: filePath
+              });
+      
+              if (cancelled) return;
+      
+              const mime = decodeURIComponent(item.type);
+              const name = item.title || 'shared-image.jpg';
+              const base64Data = fileData.data; 
+              const dataUrl = `data:${mime};base64,${base64Data}`;
+      
+              setPreviewUrl(dataUrl);
+              setBase64ImageData(base64Data);
+              setImageMimeType(mime);
+              setFileName(name);
+              setScanStatusMessage('Shared image loaded. Tap Scan to process.');
+      
+              if (Capacitor.getPlatform() === 'android') {
+                await ShareExtension.finish();
+              }
+            }
+          } catch (e) {
+            // Ignore "No processing needed" error
+            if (e.message !== 'No processing needed.') {
+                console.error('ShareExtension error:', e);
+            }
+          }
+        };
+      
+        checkShare();
+      
+        return () => {
+          cancelled = true;
+        };
+      }, [isEditMode]); // Rerun if we exit edit mode
 
-    // --- 3. Function to load image data from file URL (using Filesystem plugin) ---
-    const loadImageData = async (fileUrl) => {
-        if (!fileUrl) return;
-
-        // Strip file:// prefix if present, as Filesystem plugin often expects just the path
-        const filePath = fileUrl.startsWith('file://') ? fileUrl.substring(7) : fileUrl;
-
-        setScanStatusMessage("Loading shared image...");
-        try {
-            // Read the file as Base64 data
-            const loadImageData = async (fileUrl) => {
-                if (!fileUrl) return;
-            
-                // 1. Clean the file path (remove file:// prefix)
-                const filePath = fileUrl.startsWith('file://') ? fileUrl.substring(7) : fileUrl;
-            
-                setScanStatusMessage("Loading shared image...");
-                try {
-                    // 2. Read the file as base64 using the correct format required by Filesystem
-                    const result = await Filesystem.readFile({
-                        path: filePath,
-                        // 💡 FIX: Use base64 encoding if available, or rely on the plugin's default output 
-                        // if we are certain the plugin returns the string correctly.
-                        // Since the error is 'cannot parse response', we try reading as BASE64:
-                        // NOTE: Capacitor's readFile often returns Base64 implicitly, but we set type.
-            
-                    });
-                    
-                    // The data field from Capacitor Filesystem is typically the Base64 string
-                    const base64Data = result.data; 
-                    
-                    let mimeType = "image/jpeg"; // Default
-                    // (In a real app, you would determine MIME type from the file name or a separate plugin)
-                    
-                    // 3. Update state (this should now hold a clean Base64 string)
-                    setBase64ImageData(base64Data);
-                    setImageMimeType(mimeType);
-                    setFileName("Shared Image");
-                    setScanStatusMessage("Shared image loaded. Tap Scan to process.");
-            
-                } catch (error) {
-                    console.error("Error reading shared file with Filesystem plugin:", error);
-                    setScanStatusMessage(`Error loading shared image data: ${error.message}`);
-                    resetScannerState();
-                }
-            };
-
-            const base64Data = result.data; // Base64 string
-
-            let mimeType = "image/jpeg";
-            if (filePath.toLowerCase().endsWith('.png')) mimeType = "image/png";
-            if (filePath.toLowerCase().endsWith('.webp')) mimeType = "image/webp";
-
-            setBase64ImageData(base64Data);
-            setImageMimeType(mimeType);
-            setFileName("Shared Image");
-            setScanStatusMessage("Shared image loaded. Tap Scan to process.");
-
-        } catch (error) {
-            console.error("Error reading shared file with Filesystem plugin:", error);
-            setScanStatusMessage("Error loading shared image data.");
-            resetScannerState();
-        }
-    };
-
+    // --- 💡 REMOVED: Conflicting AppGroupReader useEffect ---
+    // --- 💡 REMOVED: Broken loadImageData function ---
 
     // --- 4. Form Handlers ---
     const handleChange = (e) => {
@@ -290,6 +149,7 @@ function AddExpense({ userId }) {
     const handleSaveExpense = async (e) => {
         e.preventDefault();
         setSaveStatus(null);
+        setIsSaving(true)
 
         let finalCategory = formData.category;
         let newCategoryKeywords = [];
@@ -304,11 +164,13 @@ function AddExpense({ userId }) {
             amount: parseFloat(formData.amount),
             payerName: formData.payerName.trim(),
             category: finalCategory,
-            timestamp: Timestamp.fromDate(new Date(formData.date + 'T00:00:00')), // Ensure correct time parsing
+            timestamp: Timestamp.fromDate(new Date(formData.date + 'T00:00:00')), 
             userId: userId,
         };
 
         try {
+            // NOTE: This component only handles ADDING. 
+            // The edit logic is in EditExpenseForm.jsx
             await addDoc(collection(db, `users/${userId}/expenses`), expenseData);
 
             if (finalCategory === formData.newCategory.trim().toUpperCase() && !categories.find(c => c.name === finalCategory)) {
@@ -320,6 +182,13 @@ function AddExpense({ userId }) {
             }
 
             setSaveStatus('success');
+            
+            // If 'onDone' prop is passed (from ExpenseTracker), call it.
+            if (onDone) {
+                onDone(); 
+            }
+
+            // Reset the form
             setFormData({ amount: '', payerName: '', category: '', newCategory: '', date: formatDateKey(new Date()) });
             resetScannerState();
             setTimeout(() => setSaveStatus(null), 3000);
@@ -329,12 +198,14 @@ function AddExpense({ userId }) {
             setSaveStatus('error');
             setTimeout(() => setSaveStatus(null), 5000);
             alert("Failed to save transaction.");
+        } finally{
+            setIsSaving(false)
         }
     };
 
-    // --- 6. Gemini API Call ---
+    // --- 6. Gemini API Call (FIXED) ---
     const callGeminiAPI = async (imageData, imageMimeType) => {
-        if (!GEMINI_API_KEY || GEMINI_API_KEY === "PASTE_YOUR_GEMINI_API_KEY_HERE") {
+        if (!GEMINI_API_KEY || GEMINI_API_KEY === "PASTE_YOUR_GEMINI_API_KEY_HERE"){
             throw new Error("Gemini API Key is not configured.");
         }
         
@@ -343,9 +214,8 @@ function AddExpense({ userId }) {
         const mappingString = JSON.stringify(keywordMap);
         
         const systemPrompt = "Analyze the payment receipt screenshot. Extract the data as JSON.";
-        const userPrompt = `Extract the following data: 1. amount (number). 2. payerName (string). 3. transaction date (YYYY-MM-DD). Use the mapping ${mappingString} to find the appropriate category based on any text in the receipt. If no match is found, use 'UNCATEGORIZED'. The output MUST be valid JSON.`;
-        
-        // NOTE: Changed model to a standard vision model for robustness
+        const userPrompt = `Extract the following data: 1. amount (number). 2. merchantName (string, the store, business, or person *receiving* the payment. Do NOT extract the sender's name). 3. transaction date (YYYY-MM-DD). Use the mapping ${mappingString} to find the appropriate category. If no match, use 'UNCATEGORIZED'. The output MUST be valid JSON.`;
+
         const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
         
         const payload = {
@@ -358,20 +228,21 @@ function AddExpense({ userId }) {
             }],
             systemInstruction: { parts: [{ text: systemPrompt }] },
             
-            // 💡 FIX: Renamed 'config' to 'generationConfig'
+            // --- 💡 THE FIX IS HERE ---
             generationConfig: { 
                 responseMimeType: "application/json",
                 responseSchema: { 
                     type: "OBJECT", 
                     properties: { 
                         "amount": { "type": "NUMBER" }, 
-                        "payerName": { "type": "STRING" }, 
+                        "merchantName": { "type": "STRING" }, // <-- Must match prompt
                         "category": { "type": "STRING" }, 
                         "date": { "type": "STRING", "description": "YYYY-MM-DD" } 
                     }, 
-                    required: ["amount", "payerName", "category", "date"] 
+                    required: ["amount", "merchantName", "category", "date"] // <-- Must match prompt
                 }
             }
+            // --- END OF FIX ---
         };
 
         const response = await fetch(apiUrl, {
@@ -393,7 +264,7 @@ function AddExpense({ userId }) {
         return JSON.parse(jsonText);
     };
 
-    // --- 7. Scan/Process Handlers ---
+    // --- 7. Scan/Process Handlers (FIXED) ---
     const handleScan = async () => {
         if (!base64ImageData || !imageMimeType) {
             setScanStatusMessage("Please upload or paste an image first.");
@@ -409,7 +280,7 @@ function AddExpense({ userId }) {
             setFormData(prev => ({
                 ...prev,
                 amount: extractedData.amount || '',
-                payerName: extractedData.payerName || '',
+                payerName: extractedData.merchantName || '', // <-- This is correct
                 date: extractedData.date || formatDateKey(new Date()),
             }));
 
@@ -507,9 +378,41 @@ function AddExpense({ userId }) {
     ));
     const isScanButtonDisabled = isScanning || !base64ImageData;
 
+    // This component should not render if it's in edit mode
+    // The parent (ExpenseTracker) will hide it, but this is a failsafe.
+    if (isEditMode) {
+        return (
+            <div className="p-4 bg-yellow-100 text-yellow-700 rounded-lg">
+                Please finish editing to add a new expense.
+            </div>
+        );
+    }
+
     return (
-        // 💡 FULL JSX RENDERED BELOW
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+            
+            {/* Batch Upload Button */}
+            <div className="md:col-span-2 mb-4">
+              <button 
+                type="button"
+                onClick={() => navigate('/batch-upload')}
+                className="w-full flex items-center justify-center p-3 text-sm font-bold text-primary bg-primary-light rounded-full shadow-sm hover:bg-blue-200 transition"
+              >
+                <i className="fas fa-images mr-2"></i>
+                Have multiple receipts? Go to Batch Upload
+              </button>
+            </div>
+
+            {previewUrl && (
+                <div className="bg-white p-5 rounded-2xl shadow-md border border-gray-100 md:col-span-2">
+                    <h3 className="text-lg font-semibold text-text-dark mb-3">Image Preview</h3>
+                    <img 
+                        src={previewUrl} 
+                        alt="Shared image preview" 
+                        className="max-w-full h-auto rounded-lg border border-gray-200"
+                    />
+                </div>
+            )}
 
             {/* Column 1: Scanner (UI for File Handling) */}
             <div className="bg-gray-50 p-6 rounded-xl shadow-inner border border-gray-200">
@@ -520,7 +423,6 @@ function AddExpense({ userId }) {
                     <div className="border-2 border-gray-300 border-dashed rounded-lg shadow-sm cursor-pointer bg-white hover:bg-gray-50 transition">
                         <label htmlFor="file-upload" className="w-full flex justify-center px-6 py-8">
                             <div className="text-center">
-                                {/* SVG for Upload Icon */}
                                 <svg className="mx-auto h-12 w-12 text-gray-400" stroke="currentColor" fill="none" viewBox="0 0 48 48" aria-hidden="true"><path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"></path></svg>
                                 <p className="mt-4 text-sm text-gray-600 font-medium">Click to upload or drag & drop</p>
                                 <p className="text-xs text-gray-500">{fileName}</p>
@@ -552,7 +454,7 @@ function AddExpense({ userId }) {
                         ) : 'Scan Receipt with AI'}
                     </button>
                 </div>
-
+               
                 {scanStatusMessage && (
                     <div className={`mt-4 p-3 text-sm text-center rounded-lg ${scanStatusMessage.includes('Scan complete') ? 'bg-green-100 text-green-700' : scanStatusMessage.includes('failed') || scanStatusMessage.includes('Error') ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-800'}`}>
                         {scanStatusMessage}
@@ -560,7 +462,7 @@ function AddExpense({ userId }) {
                 )}
 
                 {/* Optional: Image Preview Area */}
-                {base64ImageData && (
+                {base64ImageData && !previewUrl && ( // Don't show if share preview is already visible
                     <div className="mt-4 p-2 bg-white rounded-lg shadow-inner">
                         <img src={`data:${imageMimeType};base64,${base64ImageData}`} alt="Receipt Preview" className="w-full max-h-48 object-contain rounded" />
                     </div>

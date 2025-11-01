@@ -9,6 +9,8 @@ PODS:
   - CapacitorFilesystem (7.1.4):
     - Capacitor
     - IONFilesystemLib (~> 1.0.1)
+  - CapacitorShareExtension (0.0.1):
+    - Capacitor
   - CapacitorSplashScreen (7.0.3):
     - Capacitor
   - CapacitorStatusBar (7.0.3):
@@ -21,6 +23,7 @@ DEPENDENCIES:
   - "CapacitorCamera (from `../../node_modules/@capacitor/camera`)"
   - "CapacitorCordova (from `../../node_modules/@capacitor/ios`)"
   - "CapacitorFilesystem (from `../../node_modules/@capacitor/filesystem`)"
+  - CapacitorShareExtension (from `../../node_modules/capacitor-share-extension`)
   - "CapacitorSplashScreen (from `../../node_modules/@capacitor/splash-screen`)"
   - "CapacitorStatusBar (from `../../node_modules/@capacitor/status-bar`)"
 
@@ -39,6 +42,8 @@ EXTERNAL SOURCES:
     :path: "../../node_modules/@capacitor/ios"
   CapacitorFilesystem:
     :path: "../../node_modules/@capacitor/filesystem"
+  CapacitorShareExtension:
+    :path: "../../node_modules/capacitor-share-extension"
   CapacitorSplashScreen:
     :path: "../../node_modules/@capacitor/splash-screen"
   CapacitorStatusBar:
@@ -50,10 +55,11 @@ SPEC CHECKSUMS:
   CapacitorCamera: f9e54db0a18bb218a8dc360907d63aaefe9209ff
   CapacitorCordova: bf648a636f3c153f652d312ae145fb508b6ffced
   CapacitorFilesystem: f9bd850c41e048180e5dc0cbb90f2033ede9d2cc
+  CapacitorShareExtension: b921d79692ad6a474f26ce504ee1e5e4c7681ac1
   CapacitorSplashScreen: e388b8e0ed0e982a9d3a40417f478e7a018a8763
   CapacitorStatusBar: 0659ddc7b1713764a05831463d215b177a15d054
   IONFilesystemLib: 89258b8e3e85465da93127d25d7ce37f977e8a6f
 
-PODFILE CHECKSUM: 2ef8e8f68b4b22c7e156853a14a5d38c5a19191a
+PODFILE CHECKSUM: a5928048c579fb206cf1342dd70bfa7c8fe75ee6
 
 COCOAPODS: 1.16.2

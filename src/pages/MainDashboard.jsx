@@ -38,18 +38,18 @@ function MainDashboard() {
 
   // 💡 FIX: Reduced padding (px-4) and font size (text-lg) for mobile safety.
   const tabClasses = "py-3 px-2 text-lg font-semibold border-b-4 whitespace-nowrap transition-colors flex justify-center items-center space-x-2"; 
-  const activeClass = "border-blue-600 text-blue-600";
+  const activeClass = "border-blue-600 active-text";
   const inactiveClass = "border-transparent text-gray-500 hover:text-gray-800 hover:border-gray-300";
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen">
       
       {/* Header */}
       <header className="bg-white shadow-md" style={
-        {paddingTop: "3.5rem"}
+        {paddingTop: "1rem"}
       }>
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex justify-between items-center" style={{ paddingTop: 'calc(12px + env(safe-area-inset-top))' }}>       
-          <h1 className="text-2xl font-bold text-gray-900">Just do it</h1>
+          <h1 className="text-2xl font-bold text-gray-900">JUST DO IT</h1>
           <button 
             onClick={handleSignOut} 
             className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-lg shadow hover:bg-red-700 transition"

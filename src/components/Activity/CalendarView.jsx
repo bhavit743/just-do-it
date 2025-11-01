@@ -1,20 +1,44 @@
 // src/components/Activity/CalendarView.jsx
 import React, { useState, useEffect, useCallback } from 'react';
 import { db } from '../../firebaseConfig';
-import { collection, query, onSnapshot, doc, setDoc, orderBy, getDocs } from 'firebase/firestore'; // Added getDocs for initial check
+import { collection, query, onSnapshot, doc, setDoc, orderBy, getDocs } from 'firebase/firestore';
 
-// Utility: Returns date in YYYY-MM-DD format
-const formatDateKey = (date) => new Date(date).toISOString().slice(0, 10);
+// --- 1. ADD IST HELPER FUNCTIONS ---
+const IST_OFFSET = 19800000; // 5.5 * 3600 * 1000
+
+function formatToIST_YYYY_MM_DD(date) {
+  const utcMillis = new Date(date).getTime();
+  const istDate = new Date(utcMillis + IST_OFFSET);
+  const year = istDate.getUTCFullYear();
+  const month = String(istDate.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(istDate.getUTCDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+// --- END OF IST HELPERS ---
+
+// Utility: Returns date in YYYY-MM-DD format (NOW IN IST)
+const formatDateKey = (date) => formatToIST_YYYY_MM_DD(date);
+
 // Utility: Returns the first day of the month
-const getStartOfMonth = (year, month) => new Date(year, month, 1);
-
+const getStartOfMonth = (year, month) => {
+  // We create a UTC date and then format it to IST to be safe
+  const date = new Date(Date.UTC(year, month, 1));
+  return formatToIST_YYYY_MM_DD(date);
+};
 
 // --- 1. Day Detail Modal Component (Converted to Tailwind) ---
 const DayDetailModal = ({ date, initialCompletions, kpis, userId, onClose }) => {
     const [completions, setCompletions] = useState(initialCompletions);
     const [isSaving, setIsSaving] = useState(false);
+    
+    // --- 2. FIX: Use IST key for saving ---
     const dateKey = formatDateKey(date);
-    const isFutureDate = date.getTime() > new Date().setHours(23, 59, 59, 999);
+    
+    // Get today's IST date key
+    const todayISTKey = formatDateKey(new Date());
+    // Get the date key of the date being edited
+    const thisDateISTKey = formatDateKey(date);
+    const isFutureDate = thisDateISTKey > todayISTKey;
 
     const handleCheckboxChange = (kpiId, isChecked) => {
         if (isFutureDate) return; 
@@ -25,7 +49,7 @@ const DayDetailModal = ({ date, initialCompletions, kpis, userId, onClose }) => 
         if (isFutureDate) return; 
         setIsSaving(true);
         try {
-            // NOTE: Path should match your global app structure if different from standard
+            // This will now save to the correct IST dateKey
             const completionsRef = doc(db, `users/${userId}/kpi-data/${dateKey}`);
             await setDoc(completionsRef, { date: dateKey, completions: completions }, { merge: true });
             onClose(); 
@@ -44,7 +68,8 @@ const DayDetailModal = ({ date, initialCompletions, kpis, userId, onClose }) => 
         <div className={`fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40 transition-opacity duration-300 ${onClose ? 'opacity-100 visible' : 'opacity-0 hidden'}`}>
             <div className="bg-white rounded-xl shadow-2xl w-full max-w-md mx-4 p-6 transform transition-transform duration-300">
                 <header className="flex justify-between items-center pb-4 border-b border-gray-200">
-                    <p className="text-xl font-semibold">Activity for {date.toLocaleDateString()}</p>
+                    {/* Format date for display */}
+                    <p className="text-xl font-semibold">Activity for {date.toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', dateStyle: 'medium' })}</p>
                     <button className="text-gray-500 hover:text-gray-800" onClick={onClose}>
                         <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
                     </button>
@@ -97,6 +122,8 @@ function CalendarView({ userId }) {
 
     const year = currentDate.getFullYear();
     const month = currentDate.getMonth(); 
+    
+    // --- 3. FIX: Use IST key for today ---
     const todayKey = formatDateKey(new Date());
     const totalCount = kpis.length;
 
@@ -124,13 +151,17 @@ function CalendarView({ userId }) {
         
         const unsubscribe = onSnapshot(kpiDataRef, (snapshot) => {
             const historicalData = {};
-            const startOfMonth = getStartOfMonth(year, month);
-            const endOfMonth = getStartOfMonth(year, month + 1);
+            
+            // --- 4. FIX: Use IST helpers for month start/end ---
+            const startOfMonthKey = getStartOfMonth(year, month);
+            // We get the start of the *next* month to use as an end boundary
+            const endOfMonthKey = getStartOfMonth(year, month + 1);
             
             snapshot.forEach(doc => {
-                const docDate = doc.id; 
+                const docDate = doc.id; // This is already a YYYY-MM-DD string
 
-                if (docDate >= formatDateKey(startOfMonth) && docDate < formatDateKey(endOfMonth)) {
+                // Compare string keys directly
+                if (docDate >= startOfMonthKey && docDate < endOfMonthKey) {
                     historicalData[docDate] = doc.data().completions || {};
                 }
             });
@@ -146,28 +177,38 @@ function CalendarView({ userId }) {
     }, [userId, year, month]); 
 
 
-    // --- Calendar Generation Logic (remains same) ---
+    // --- Calendar Generation Logic ---
     const daysInMonth = new Date(year, month + 1, 0).getDate();
     const firstDayIndex = new Date(year, month, 1).getDay();
     const calendarDays = [];
     
+    // --- 5. FIX: Get today's date ONCE for comparison ---
+    const todayDate = new Date();
+    const todayISTKey = formatDateKey(todayDate);
+    const todayTimestamp = new Date(todayISTKey + 'T00:00:00').getTime(); // Midnight IST
+
     for (let i = 0; i < firstDayIndex; i++) { calendarDays.push(null); }
     for (let day = 1; day <= daysInMonth; day++) {
         const date = new Date(year, month, day);
+        // --- 6. FIX: Use IST key for the calendar day ---
         const dateKey = formatDateKey(date);
+        
         const completions = dailyData[dateKey] || {};
         const completedCount = Object.values(completions).filter(v => v).length;
         const progress = totalCount > 0 ? (completedCount / totalCount) * 100 : 0;
-        const isPast = date.setHours(0, 0, 0, 0) < new Date().setHours(0, 0, 0, 0);
+        
+        // --- 7. FIX: Compare IST timestamps ---
+        const isPast = date.getTime() < todayTimestamp;
 
         calendarDays.push({
             day, date, dateKey, summary: `${completedCount}/${totalCount}`,
-            progress, completions, isToday: dateKey === todayKey, isPast: isPast,
+            progress, completions, isToday: dateKey === todayISTKey, isPast: isPast,
         });
     }
 
     const handleDayClick = (dayData) => {
-        if (dayData && dayData.date.setHours(0, 0, 0, 0) <= new Date().setHours(0, 0, 0, 0)) { 
+        // --- 8. FIX: Compare IST keys ---
+        if (dayData && dayData.dateKey <= todayISTKey) { 
             setSelectedDay(dayData);
         }
     };
@@ -182,16 +223,8 @@ function CalendarView({ userId }) {
 
     // --- Tailwind Styles ---
     const gridStyle = "grid grid-cols-7 border border-gray-300 bg-white rounded-lg overflow-hidden";
-    
     const headerCellStyle = "text-center text-xs font-medium text-gray-600 py-2 border-b border-gray-300 bg-gray-50 uppercase";
-
-    const dayCellStyle = {
-        padding: '0.5rem',
-        borderRight: '1px solid #f5f5f5', 
-        borderBottom: '1px solid #f5f5f5',
-        minHeight: '4.5rem', 
-        position: 'relative', 
-    };
+    const dayCellStyle = {paddingLeft: 0.5 +"em"};
 
     return (
         <div className="p-4"> 
@@ -224,7 +257,8 @@ function CalendarView({ userId }) {
 
                     {/* Calendar Days */}
                     {calendarDays.map((dayData, index) => {
-                        const canClick = dayData && dayData.date.setHours(0, 0, 0, 0) <= new Date().setHours(0, 0, 0, 0); 
+                        // --- 9. FIX: Compare IST keys ---
+                        const canClick = dayData && dayData.dateKey <= todayISTKey; 
                         const isToday = dayData && dayData.isToday;
                         const isCompleted = dayData && dayData.progress === 100 && dayData.progress > 0;
                         const bgColor = dayData ? (isToday ? 'bg-blue-50' : 'bg-white') : 'bg-gray-100'; 
@@ -232,19 +266,16 @@ function CalendarView({ userId }) {
                         return (
                             <div 
                                 key={index} 
-                                // Apply the style object and Tailwind classes
                                 className={`text-left text-sm relative ${bgColor} ${canClick ? 'cursor-pointer hover:bg-gray-100' : 'opacity-60'}`}
                                 style={dayCellStyle} 
                                 onClick={() => handleDayClick(dayData)}
                             >
                                 {dayData ? (
                                     <>
-                                        {/* Date Number */}
                                         <p className={`text-lg font-bold ${isToday ? 'text-blue-700' : 'text-gray-800'}`}>
                                             {dayData.day}
                                         </p>
                                         
-                                        {/* Completion Summary */}
                                         {totalCount > 0 && (
                                             <div className="flex flex-col items-start mt-1">
                                                 <p className="text-xs text-gray-500">
@@ -253,16 +284,14 @@ function CalendarView({ userId }) {
                                             </div>
                                         )}
 
-                                        {/* Green Indicator Dot */}
                                         {isCompleted && (
                                             <span 
                                                 className="absolute w-1.5 h-1.5 rounded-full bg-green-500" 
-                                                style={{ bottom: '5px', left: '50%', transform: 'translateX(-50%)' }}
+                                                style={{ bottom: '5px', left: '70%', transform: 'translateX(-50%)' }}
                                             />
                                         )}
                                     </>
                                 ) : (
-                                    // Empty day cell
                                     <p className="text-lg text-gray-300"></p>
                                 )}
                             </div>

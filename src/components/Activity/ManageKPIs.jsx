@@ -1,7 +1,10 @@
-// src/components/Activity/ManageKPIs.jsx
 import React, { useState, useEffect } from 'react';
 import { db } from '../../firebaseConfig';
-import { collection, addDoc, query, onSnapshot, orderBy, deleteDoc, doc, Timestamp } from 'firebase/firestore'; // Added Timestamp for clean date saving
+import { collection, addDoc, query, onSnapshot, orderBy, deleteDoc, doc, Timestamp } from 'firebase/firestore';
+
+// --- 1. IMPORT THE NEW COMPONENTS ---
+import Modal from '../common/Modal'; // Assuming path from previous setup
+import EditKPIForm from './EditKpiForm';
 
 function ManageKPIs({ userId }) {
   const [kpiName, setKpiName] = useState('');
@@ -9,15 +12,15 @@ function ManageKPIs({ userId }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  // 1. Listen for real-time updates to the KPIs collection
+  // --- 2. ADD STATE FOR THE MODAL ---
+  const [kpiToEdit, setKpiToEdit] = useState(null);
+
+  // 1. Listen for real-time updates (Unchanged)
   useEffect(() => {
     if (!userId) return;
-
-    // Path: users/{userId}/kpis
     const kpisRef = collection(db, `users/${userId}/kpis`);
     const q = query(kpisRef, orderBy('createdAt', 'desc'));
 
-    // Real-time listener
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const kpiList = snapshot.docs.map(doc => ({
         id: doc.id,
@@ -31,11 +34,10 @@ function ManageKPIs({ userId }) {
       setLoading(false);
     });
 
-    // Cleanup subscription on unmount
     return () => unsubscribe();
   }, [userId]);
 
-  // 2. Add New KPI
+  // 2. Add New KPI (Unchanged)
   const handleAddKPI = async (e) => {
     e.preventDefault();
     const name = kpiName.trim();
@@ -45,7 +47,7 @@ function ManageKPIs({ userId }) {
       const kpisRef = collection(db, `users/${userId}/kpis`);
       await addDoc(kpisRef, {
         name: name,
-        createdAt: Timestamp.now(), // Use Timestamp for consistent server-side time
+        createdAt: Timestamp.now(),
       });
       setKpiName('');
     } catch (e) {
@@ -54,7 +56,7 @@ function ManageKPIs({ userId }) {
     }
   };
 
-  // 3. Delete KPI
+  // 3. Delete KPI (Unchanged)
   const handleDeleteKPI = async (kpiId, kpiName) => {
     if (!window.confirm(`Are you sure you want to delete the goal: "${kpiName}"? This will affect your streak history!`)) return;
     try {
@@ -65,25 +67,26 @@ function ManageKPIs({ userId }) {
       setError("Failed to delete goal.");
     }
   };
-
-  // 4. Gemini Feature Placeholder (Cannot be implemented on Spark plan)
-  const handleSuggestTasks = (kpiName) => {
-    alert(`AI Feature Disabled on Spark Plan. Cannot suggest tasks for: ${kpiName}`);
+  
+  // --- 3. ADD HANDLER TO CLOSE THE MODAL ---
+  const handleDoneEditing = () => {
+    setKpiToEdit(null);
   };
 
   return (
     <div className="space-y-6">
       <h3 className="text-2xl font-bold text-gray-900">Manage Daily Goals (KPIs)</h3>
       
-      {/* Error Notification */}
+      {/* Error Notification (Unchanged) */}
       {error && (
         <div className="p-3 bg-red-100 text-red-700 rounded-lg">
           {error}
         </div>
       )}
 
-      {/* KPI Input Form (Tailwind flex/addon equivalent) */}
+      {/* KPI Input Form (Unchanged) */}
       <form onSubmit={handleAddKPI} className="flex space-x-3">
+        {/* ... (input and button) ... */}
         <div className="flex-grow">
           <input
             className="w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
@@ -106,16 +109,29 @@ function ManageKPIs({ userId }) {
 
       <hr className="border-t border-gray-200" />
 
+      {/* --- 4. RENDER THE MODAL (if kpiToEdit is set) --- */}
+      {kpiToEdit && (
+        <Modal title="Edit Goal" onClose={handleDoneEditing}>
+          <EditKPIForm
+            userId={userId}
+            kpiToEdit={kpiToEdit}
+            onDone={handleDoneEditing}
+          />
+        </Modal>
+      )}
+
       {/* KPI List */}
       <h4 className="text-xl font-semibold text-gray-800">Existing Goals</h4>
       
-      {/* Loading State */}
+      {/* Loading State (Unchanged) */}
       {loading ? (
+        // ... (loading spinner) ...
         <div className="text-center py-4">
           <svg className="animate-spin h-6 w-6 text-blue-500 mx-auto" viewBox="0 0 24 24"></svg>
           <p className="text-gray-500 mt-2">Loading goals...</p>
         </div>
       ) : kpis.length === 0 ? (
+        // ... (no goals added) ...
         <p className="text-gray-500 text-center py-4">No goals added yet. Add your first daily goal above!</p>
       ) : (
         <div className="space-y-3">
@@ -127,15 +143,17 @@ function ManageKPIs({ userId }) {
               <p className="text-lg font-medium text-gray-900">{kpi.name}</p>
               
               <div className="flex space-x-2">
-                {/* Gemini Feature Placeholder Button */}
+                
+                {/* --- 5. ADD THE EDIT BUTTON --- */}
                 <button
-                  className="px-3 py-1 text-sm font-medium text-blue-700 bg-blue-100 rounded-lg hover:bg-blue-200 transition"
-                  onClick={() => handleSuggestTasks(kpi.name)}
+                  className="p-2 text-blue-600 bg-blue-100 rounded-full hover:bg-blue-200 transition"
+                  onClick={() => setKpiToEdit(kpi)} // Open modal
+                  title={`Edit ${kpi.name}`}
                 >
-                  Suggest Tasks
+                  <i className="fas fa-pencil-alt text-sm"></i>
                 </button>
                 
-                {/* Delete Button */}
+                {/* Delete Button (Unchanged) */}
                 <button
                   className="p-2 text-red-600 bg-red-100 rounded-full hover:bg-red-200 transition"
                   onClick={() => handleDeleteKPI(kpi.id, kpi.name)}

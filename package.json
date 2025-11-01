@@ -22,6 +22,7 @@
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.1",
     "bulma-switch": "^2.0.4",
+    "capacitor-share-extension": "github:calvinckho/capacitor-share-extension#capacitor-6",
     "chart.js": "^4.5.1",
     "firebase": "^12.4.0",
     "framer-motion": "^12.23.24",

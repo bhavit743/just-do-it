@@ -1,6 +1,4 @@
-// src/pages/ExpenseTracker.jsx
 import React, { useState } from 'react';
-import { auth } from '../firebaseConfig';
 
 // Import all Expense components
 import AddExpense from '../components/Expense/AddExpense';
@@ -8,13 +6,13 @@ import FullList from '../components/Expense/FullList';
 import SummaryView from '../components/Expense/SummaryView';
 import ManageCategories from '../components/Expense/ManageCategories';
 
-function ExpenseTracker() {
+// Accept { userId } prop from App.jsx
+function ExpenseTracker({ userId }) {
   const [activeSubTab, setActiveSubTab] = useState('add');
-  const userId = auth.currentUser ? auth.currentUser.uid : null;
 
-  // Tailwind classes for sub-tabs (These were already optimized for mobile text size/padding)
+  // Tailwind classes
   const tabClasses = "py-2 px-2 text-sm md:px-3 md:text-base font-medium border-b-2 transition-colors whitespace-nowrap";
-  const activeClass = "border-blue-600 text-blue-600 bg-blue-50";
+  const activeClass = "border-blue-600 active-text bg-blue-50";
   const inactiveClass = "border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50";
 
   const renderContent = () => {
@@ -28,8 +26,10 @@ function ExpenseTracker() {
     
     switch (activeSubTab) {
       case 'add':
-        return <AddExpense userId={userId} />;
+        // Pass a simple onDone prop to switch tabs after saving
+        return <AddExpense userId={userId} onDone={() => setActiveSubTab('list')} />;
       case 'list':
+        // No special props needed. FullList handles its own editing.
         return <FullList userId={userId} />;
       case 'summary':
         return <SummaryView userId={userId} />;
@@ -44,20 +44,17 @@ function ExpenseTracker() {
     <>
       <h2 className="text-3xl font-bold text-gray-900 mb-4">Expense Tracker</h2>
       
-      {/* Sub Navigation Container (THE FIX IS HERE) */}
-      {/* We are removing the outer horizontal padding (px) where possible, or reducing it to px-1 */}
-      <div className="flex justify-start border-b border-gray-200 mb-6 overflow-x-auto">
-        <div className="flex space-x-1 px-1"> {/* 💡 FIX: Added px-1 to the inner div for minimal edge clearance */}
+      <div className="flex justify-center border-b border-gray-200 mb-6 overflow-x-auto">
+        <div className="flex space-x-1 px-1">
           
-          {/* Add Expense Tab */}
+          {/* We just need the simple onClick again */}
           <button
             onClick={() => setActiveSubTab('add')}
             className={`${tabClasses} ${activeSubTab === 'add' ? activeClass : inactiveClass}`}
           >
-            Add Expense
+            Add Expense {/* Text is simple again */}
           </button>
 
-          {/* Full List Tab */}
           <button
             onClick={() => setActiveSubTab('list')}
             className={`${tabClasses} ${activeSubTab === 'list' ? activeClass : inactiveClass}`}
@@ -65,7 +62,6 @@ function ExpenseTracker() {
             Full List
           </button>
 
-          {/* Summary Tab */}
           <button
             onClick={() => setActiveSubTab('summary')}
             className={`${tabClasses} ${activeSubTab === 'summary' ? activeClass : inactiveClass}`}
@@ -73,7 +69,6 @@ function ExpenseTracker() {
             Summary
           </button>
 
-          {/* Categories Tab */}
           <button
             onClick={() => setActiveSubTab('categories')}
             className={`${tabClasses} ${activeSubTab === 'categories' ? activeClass : inactiveClass}`}

@@ -20,67 +20,43 @@ const dateCompare = (a, b) => {
     return 0;
 };
 
-// --- CORE STREAK LOGIC (Remains UNCHANGED) ---
+// --- CORE STREAK LOGIC (REVISED AND CORRECTED) ---
 const calculateStreaks = (kpis, allData) => {
     const todayKey = formatDateKey(new Date());
     const results = {};
 
-    // Sort all unique dates in descending order (newest first)
-    const sortedDates = Object.keys(allData).sort(dateCompare).reverse();
-
     for (const kpi of kpis) {
         let currentStreak = 0;
-        
-        // Check for today's status
+        let currentCheckDate = new Date(); // Start checking from today
+
+        // 1. Check if today is completed
         const isCompletedToday = !!allData[todayKey]?.[kpi.id];
 
-        // Start checking from yesterday, only count today if it's completed
-        let startIndex = 0;
         if (isCompletedToday) {
             currentStreak = 1;
-        } else {
-            // If today is NOT completed, the streak ends yesterday. 
-            startIndex = 1;
         }
 
-        // Iterate through history (starting from yesterday/day before)
-        for (let i = startIndex; i < sortedDates.length; i++) {
-            const currentDateKey = sortedDates[i];
+        // 2. Set the loop to start checking from YESTERDAY
+        currentCheckDate.setDate(currentCheckDate.getDate() - 1);
+
+        // 3. Loop backwards from yesterday for up to a year (or any limit)
+        for (let i = 0; i < 365; i++) {
+            const dateKey = formatDateKey(currentCheckDate);
             
-            // Check if this date has a completion entry for the KPI
-            const isCompleted = !!allData[currentDateKey]?.[kpi.id];
+            // Check if this past day has a completion entry
+            const isCompleted = !!allData[dateKey]?.[kpi.id];
 
             if (isCompleted) {
-                // Check for a gap in days (e.g., missed one day)
-                const dateA = new Date(currentDateKey);
-                // Note: The logic in the original component for checking date difference
-                // is complex. For clean client-side logic, we just check if the previous day 
-                // in the data structure matches the current date minus one day.
-                
-                // For simplicity and to fix potential bugs, a real-world implementation uses 
-                // moment.js or date-fns, but for now, we rely on sequential comparison:
-                
-                if (i === startIndex) { // Always count the first day checked (which is yesterday or before)
-                     currentStreak++;
-                     continue;
-                }
-                
-                // Check if the previous date key is exactly one day before the current date key
-                const previousDateKey = sortedDates[i - 1];
-                const datePrev = new Date(previousDateKey);
-                
-                // Check if current date is exactly 24 hours after the previous date
-                if (dateA.getTime() - datePrev.getTime() === 86400000) {
-                     currentStreak++;
-                } else {
-                    // Gap detected, streak is broken
-                    break;
-                }
-
+                // The day was completed, add to the streak
+                currentStreak++;
             } else {
-                // Missed day detected, streak is broken
+                // A day was missed (no data or 'false' entry).
+                // The streak is broken. Stop looping for this KPI.
                 break;
             }
+            
+            // Go back one more day for the next loop iteration
+            currentCheckDate.setDate(currentCheckDate.getDate() - 1);
         }
         
         results[kpi.id] = {

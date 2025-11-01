@@ -4,7 +4,14 @@ import { db } from '../../firebaseConfig';
 import { collection, doc, onSnapshot, setDoc, query, orderBy } from 'firebase/firestore';
 
 // Utility to get today's date in YYYY-MM-DD format
-const getTodayDate = () => new Date().toISOString().slice(0, 10);
+
+
+const getTodayDate = () => {
+  const fmt = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit'
+  });
+  return fmt.format(new Date()); // en-CA gives YYYY-MM-DD
+};
 
 function TodayActivity({ userId }) {
   const [kpis, setKpis] = useState([]);

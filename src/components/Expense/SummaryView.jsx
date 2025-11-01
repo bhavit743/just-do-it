@@ -10,59 +10,96 @@ import { Chart as ChartJS, ArcElement, Tooltip, Legend } from 'chart.js';
 // Register Chart.js elements
 ChartJS.register(ArcElement, Tooltip, Legend);
 
-// Utility functions (repeated for self-contained component)
-const getCurrentMonth = () => new Date().toISOString().slice(0, 7);
+// --- 1. ADD IST HELPER FUNCTIONS ---
+const IST_OFFSET = 19800000; // 5.5 * 3600 * 1000
+
+function formatToIST_YYYY_MM(date) {
+  const utcMillis = new Date(date).getTime();
+  const istDate = new Date(utcMillis + IST_OFFSET);
+  const year = istDate.getUTCFullYear();
+  const month = String(istDate.getUTCMonth() + 1).padStart(2, '0');
+  return `${year}-${month}`;
+}
+// --- END OF IST HELPERS ---
+
+
+// Utility functions
+const getCurrentMonth = () => formatToIST_YYYY_MM(new Date()); // Use IST for default month
 const formatCurrency = (amount) => {
     const numAmount = Number(amount) || 0;
     return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 2 }).format(numAmount);
 };
-const getCategoryColor = (categoryName) => {
-    switch (categoryName.toUpperCase()) {
-        case 'FOOD': return '#f59e0b'; // Amber
-        case 'TRANSPORT': return '#3b82f6'; // Blue
-        case 'RENT': return '#8b5cf6'; // Violet
-        case 'BILLS': return '#ef4444'; // Red
-        case 'INCOME': return '#10b981'; // Green
-        case 'SHOPPING': return '#ec4899'; // Pink
-        default: return '#6b7280'; // Gray
-    }
-};
+
+// --- 2. DELETED the getCategoryColor function ---
 
 function SummaryView({ userId }) {
     const [expenses, setExpenses] = useState([]);
+    // --- 3. ADD state for categories ---
+    const [categories, setCategories] = useState([]);
     const [loading, setLoading] = useState(true);
     const [selectedMonth, setSelectedMonth] = useState(getCurrentMonth());
     const [summary, setSummary] = useState({ total: 0, categories: [] });
 
-    // --- 1. Fetch ALL Expenses in Real-Time ---
+    // --- 4. UPDATE useEffect to fetch BOTH collections ---
     useEffect(() => {
         if (!userId) return;
+        setLoading(true);
+
+        let expensesLoaded = false;
+        let categoriesLoaded = false;
+
+        const checkLoadingDone = () => {
+            if (expensesLoaded && categoriesLoaded) {
+                setLoading(false);
+            }
+        };
+
+        // Fetch Expenses
         const expensesQuery = query(
             collection(db, `users/${userId}/expenses`),
             orderBy("timestamp", "desc")
         );
-
-        const unsubscribe = onSnapshot(expensesQuery, (snapshot) => {
+        const unsubscribeExpenses = onSnapshot(expensesQuery, (snapshot) => {
             const expenseList = snapshot.docs.map(doc => ({
                 id: doc.id,
                 ...doc.data(),
-                dateString: new Date(doc.data().timestamp.seconds * 1000).toISOString().slice(0, 7) // Add YYYY-MM
+                dateString: formatToIST_YYYY_MM(doc.data().timestamp.seconds * 1000) 
             }));
             setExpenses(expenseList);
-            setLoading(false);
+            expensesLoaded = true;
+            checkLoadingDone();
         }, (err) => {
             console.error("Summary Fetch Error:", err);
             setLoading(false);
         });
-        return () => unsubscribe();
+
+        // Fetch Categories
+        const categoriesQuery = query(collection(db, `users/${userId}/categories`));
+        const unsubscribeCategories = onSnapshot(categoriesQuery, (snapshot) => {
+            const catList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            setCategories(catList);
+            categoriesLoaded = true;
+            checkLoadingDone();
+        }, (err) => {
+            console.error("Category Fetch Error:", err);
+            setLoading(false);
+        });
+
+        return () => {
+            unsubscribeExpenses();
+            unsubscribeCategories();
+        };
     }, [userId]);
 
-    // --- 2. Calculate Summary and Chart Data on Filter/Data Change ---
+    // --- 5. UPDATE Calculate Summary to use dynamic colors ---
     useEffect(() => {
-        if (expenses.length === 0 && !loading) {
-            setSummary({ total: 0, categories: [] });
-            return;
-        }
+        // Wait for data to be loaded
+        if (loading) return; 
+
+        // Create a color lookup map
+        const colorMap = Object.fromEntries(
+            categories.map(cat => [cat.name, cat.color || '#6B7280'])
+        );
 
         let totalSpending = 0;
         const categoriesMap = {};
@@ -71,13 +108,18 @@ function SummaryView({ userId }) {
 
         filteredExpenses.forEach(exp => {
             const amount = Number(exp.amount) || 0;
-            // Only count non-income for the chart visualization
             if (exp.category.toUpperCase() !== 'INCOME') {
                  totalSpending += amount;
             }
 
             const catName = (exp.category || 'UNCATEGORIZED').toUpperCase();
-            if (!categoriesMap[catName]) categoriesMap[catName] = { amount: 0, color: getCategoryColor(catName) };
+            
+            // Get the color from our dynamic map
+            const color = colorMap[catName] || '#6B7280'; 
+
+            if (!categoriesMap[catName]) {
+                 categoriesMap[catName] = { amount: 0, color: color };
+            }
             categoriesMap[catName].amount += amount;
         });
 
@@ -87,9 +129,10 @@ function SummaryView({ userId }) {
             .sort((a, b) => b.amount - a.amount);
 
         setSummary({ total: totalSpending, categories: categoriesArray });
-    }, [expenses, selectedMonth, loading]);
+    }, [expenses, categories, selectedMonth, loading]); // <-- Add dependencies
 
-    // --- 3. Chart Configuration ---
+    // --- 6. Chart Configuration (Unchanged) ---
+    // This now works automatically because summary.categories contains the dynamic colors
     const chartData = {
         labels: summary.categories.map(c => `${c.name} (${formatCurrency(c.amount)})`),
         datasets: [{
@@ -99,7 +142,6 @@ function SummaryView({ userId }) {
             borderWidth: 1,
         }],
     };
-
     const chartOptions = {
         responsive: true,
         maintainAspectRatio: false,
@@ -123,8 +165,13 @@ function SummaryView({ userId }) {
         },
     };
     
-    // --- 4. Render Logic ---
-    const friendlyMonthName = new Date(selectedMonth + '-01').toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+    // --- 7. Render Logic (Unchanged) ---
+    const friendlyMonthName = new Date(`${selectedMonth}-01T00:00:00Z`).toLocaleDateString('en-US', { 
+        month: 'long', 
+        year: 'numeric',
+        timeZone: 'UTC' 
+    });
+
 
     if (loading) {
         return (
@@ -165,8 +212,6 @@ function SummaryView({ userId }) {
                            {formatCurrency(summary.total)}
                         </p>
                     </div>
-
-                    {/* Gemini Feature Placeholder Button */}
                 </div>
 
                 {/* Column 2: Doughnut Chart */}
@@ -190,6 +235,7 @@ function SummaryView({ userId }) {
                 <h4 className="text-lg font-semibold text-gray-800 mb-4">Detailed Breakdown</h4>
                 
                 <div className="space-y-3">
+                    {/* This list also works automatically now */}
                     {summary.categories.map(cat => (
                         <div key={cat.name} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg border-l-4" style={{ borderColor: cat.color }}>
                             <span className="text-base font-medium text-gray-900">{cat.name}</span>

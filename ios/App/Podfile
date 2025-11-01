@@ -16,6 +16,7 @@ def capacitor_pods
   pod 'CapacitorFilesystem', :path => '../../node_modules/@capacitor/filesystem'
   pod 'CapacitorSplashScreen', :path => '../../node_modules/@capacitor/splash-screen'
   pod 'CapacitorStatusBar', :path => '../../node_modules/@capacitor/status-bar'
+  pod 'CapacitorShareExtension', :path => '../../node_modules/capacitor-share-extension'
 end
 
 target 'App' do

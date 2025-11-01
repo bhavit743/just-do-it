@@ -13,7 +13,7 @@ function ActivityTracker() {
 
   // 💡 FIX: Adjusted tab classes for better mobile fit.
   const tabClasses = "py-2 px-2 sm:px-3 text-sm md:text-base font-medium border-b-2 transition-colors whitespace-nowrap";
-  const activeClass = "border-blue-600 text-blue-600 bg-blue-50";
+  const activeClass = "border-blue-600 active-text bg-blue-50";
   const inactiveClass = "border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50";
 
   const renderContent = () => {
