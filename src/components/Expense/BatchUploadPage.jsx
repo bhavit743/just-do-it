@@ -136,7 +136,8 @@ function BatchUploadPage({ userId }) {
             payerName: (extractedData.merchantName || 'Unknown').trim(),
             category: finalCategory,
             timestamp: Timestamp.fromDate(new Date((extractedData.date || formatDateKey(new Date())) + 'T00:00:00')),
-            userId: userId, // This will now be correctly populated
+            userId: userId, 
+            headcount: 1,// This will now be correctly populated
         };
 
         // Add the expense

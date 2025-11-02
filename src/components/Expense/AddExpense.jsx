@@ -1,19 +1,16 @@
+// src/components/Expense/AddExpense.jsx
 import React, { useState, useEffect } from 'react';
-// 💡 Removed unused 'Outlet' and 'useLocation'
 import { useNavigate } from 'react-router-dom';
 import { db } from '../../firebaseConfig';
-// 💡 Removed unused 'doc' and 'updateDoc'
 import { collection, addDoc, onSnapshot, query, orderBy, Timestamp } from 'firebase/firestore'; 
 
-// 💡 NEW IMPORTS: Capacitor Plugins
+// Capacitor Plugins
 import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
-import { Capacitor } from '@capacitor/core'; // To check platform
+import { Capacitor } from '@capacitor/core';
 import { ShareExtension } from 'capacitor-share-extension';
 
 // !!! IMPORTANT: ADD YOUR GEMINI API KEY HERE !!!
 const GEMINI_API_KEY = "AIzaSyAZJOfCX_WZmXb1bD0lU0-8pn5LPCKNxGA";
-
-// 💡 REMOVED getAppGroupReader and inferMimeFromName (no longer used)
 
   
 function AddExpense({ userId, expenseToEdit, onDone }) {
@@ -21,7 +18,12 @@ function AddExpense({ userId, expenseToEdit, onDone }) {
     const [categories, setCategories] = useState([]);
     const [loading, setLoading] = useState(true);
     const [formData, setFormData] = useState({
-        amount: '', payerName: '', category: '', newCategory: '', date: formatDateKey(new Date()),
+        amount: '', 
+        payerName: '', 
+        category: '', 
+        newCategory: '', 
+        date: formatDateKey(new Date()),
+        headcount: 1, // <-- 1. ADDED headcount to state
     });
     const [saveStatus, setSaveStatus] = useState(null);
     const [isSaving, setIsSaving] = useState(false);
@@ -34,7 +36,6 @@ function AddExpense({ userId, expenseToEdit, onDone }) {
     const [isScanning, setIsScanning] = useState(false);
     const [previewUrl, setPreviewUrl] = useState(null);
 
-    // 2. CREATE A VARIABLE FOR EDIT MODE
     const isEditMode = Boolean(expenseToEdit);
 
     // Utility: Format date to YYYY-MM-DD
@@ -48,7 +49,7 @@ function AddExpense({ userId, expenseToEdit, onDone }) {
         setImageMimeType(null);
         setFileName("No file selected.");
         setScanStatusMessage(null);
-        setPreviewUrl(null); // Also reset preview URL
+        setPreviewUrl(null);
         const fileInput = document.getElementById('file-upload');
         if (fileInput) {
             fileInput.value = null; 
@@ -72,7 +73,6 @@ function AddExpense({ userId, expenseToEdit, onDone }) {
 
     // --- 2. useEffect for ShareExtension (This is the correct one) ---
     useEffect(() => {
-        // Don't run this if we're in edit mode
         if (isEditMode) return; 
         
         let cancelled = false;
@@ -119,7 +119,6 @@ function AddExpense({ userId, expenseToEdit, onDone }) {
               }
             }
           } catch (e) {
-            // Ignore "No processing needed" error
             if (e.message !== 'No processing needed.') {
                 console.error('ShareExtension error:', e);
             }
@@ -131,10 +130,7 @@ function AddExpense({ userId, expenseToEdit, onDone }) {
         return () => {
           cancelled = true;
         };
-      }, [isEditMode]); // Rerun if we exit edit mode
-
-    // --- 💡 REMOVED: Conflicting AppGroupReader useEffect ---
-    // --- 💡 REMOVED: Broken loadImageData function ---
+      }, [isEditMode]);
 
     // --- 4. Form Handlers ---
     const handleChange = (e) => {
@@ -166,11 +162,10 @@ function AddExpense({ userId, expenseToEdit, onDone }) {
             category: finalCategory,
             timestamp: Timestamp.fromDate(new Date(formData.date + 'T00:00:00')), 
             userId: userId,
+            headcount: Number(formData.headcount) || 1, // <-- 2. SAVE HEADCOUNT from form
         };
 
         try {
-            // NOTE: This component only handles ADDING. 
-            // The edit logic is in EditExpenseForm.jsx
             await addDoc(collection(db, `users/${userId}/expenses`), expenseData);
 
             if (finalCategory === formData.newCategory.trim().toUpperCase() && !categories.find(c => c.name === finalCategory)) {
@@ -178,18 +173,25 @@ function AddExpense({ userId, expenseToEdit, onDone }) {
                     name: finalCategory,
                     keywords: newCategoryKeywords,
                     createdAt: Timestamp.now(),
+                    color: '#6B7280' // Add default color
                 });
             }
 
             setSaveStatus('success');
             
-            // If 'onDone' prop is passed (from ExpenseTracker), call it.
             if (onDone) {
                 onDone(); 
             }
 
             // Reset the form
-            setFormData({ amount: '', payerName: '', category: '', newCategory: '', date: formatDateKey(new Date()) });
+            setFormData({ 
+                amount: '', 
+                payerName: '', 
+                category: '', 
+                newCategory: '', 
+                date: formatDateKey(new Date()),
+                headcount: 1 // <-- 3. RESET HEADCOUNT
+            });
             resetScannerState();
             setTimeout(() => setSaveStatus(null), 3000);
 
@@ -228,21 +230,19 @@ function AddExpense({ userId, expenseToEdit, onDone }) {
             }],
             systemInstruction: { parts: [{ text: systemPrompt }] },
             
-            // --- 💡 THE FIX IS HERE ---
             generationConfig: { 
                 responseMimeType: "application/json",
                 responseSchema: { 
                     type: "OBJECT", 
                     properties: { 
                         "amount": { "type": "NUMBER" }, 
-                        "merchantName": { "type": "STRING" }, // <-- Must match prompt
+                        "merchantName": { "type": "STRING" },
                         "category": { "type": "STRING" }, 
                         "date": { "type": "STRING", "description": "YYYY-MM-DD" } 
                     }, 
-                    required: ["amount", "merchantName", "category", "date"] // <-- Must match prompt
+                    required: ["amount", "merchantName", "category", "date"] 
                 }
             }
-            // --- END OF FIX ---
         };
 
         const response = await fetch(apiUrl, {
@@ -280,8 +280,9 @@ function AddExpense({ userId, expenseToEdit, onDone }) {
             setFormData(prev => ({
                 ...prev,
                 amount: extractedData.amount || '',
-                payerName: extractedData.merchantName || '', // <-- This is correct
+                payerName: extractedData.merchantName || '', 
                 date: extractedData.date || formatDateKey(new Date()),
+                headcount: 1, // <-- 4. RESET HEADCOUNT on new scan
             }));
 
             const extractedCategory = (extractedData.category || 'UNCATEGORIZED').toUpperCase();
@@ -379,13 +380,14 @@ function AddExpense({ userId, expenseToEdit, onDone }) {
     const isScanButtonDisabled = isScanning || !base64ImageData;
 
     // This component should not render if it's in edit mode
-    // The parent (ExpenseTracker) will hide it, but this is a failsafe.
     if (isEditMode) {
-        return (
-            <div className="p-4 bg-yellow-100 text-yellow-700 rounded-lg">
-                Please finish editing to add a new expense.
-            </div>
-        );
+        // This 'onDone' prop comes from FullList -> ExpenseTracker -> AddExpense
+        // It's a bit complex, but it's how we're handling the modal.
+        // A better way would be a dedicated EditForm, but this matches the user's file.
+        // Wait, the user's *previous* file setup uses a *separate* EditExpenseForm.jsx.
+        // This component (AddExpense.jsx) *should not* render in edit mode.
+        // The check 'if (isEditMode)' is correct based on our previous setup.
+        return null;
     }
 
     return (
@@ -416,10 +418,9 @@ function AddExpense({ userId, expenseToEdit, onDone }) {
 
             {/* Column 1: Scanner (UI for File Handling) */}
             <div className="bg-gray-50 p-6 rounded-xl shadow-inner border border-gray-200">
+                {/* ... (Your scanner JSX is unchanged) ... */}
                 <h3 className="text-xl font-semibold mb-6 text-gray-800">Scan & Auto-Fill</h3>
-
                 <div className="flex flex-col space-y-4">
-                    {/* File Drop Area / Upload */}
                     <div className="border-2 border-gray-300 border-dashed rounded-lg shadow-sm cursor-pointer bg-white hover:bg-gray-50 transition">
                         <label htmlFor="file-upload" className="w-full flex justify-center px-6 py-8">
                             <div className="text-center">
@@ -430,8 +431,6 @@ function AddExpense({ userId, expenseToEdit, onDone }) {
                         </label>
                         <input id="file-upload" name="file-upload" type="file" className="sr-only" accept="image/png, image/jpeg, image/webp" onChange={handleFileSelect} />
                     </div>
-
-                    {/* Paste Button (For iOS Shortcut) */}
                     <button
                         onClick={handlePaste}
                         className="py-3 px-4 text-sm font-bold text-white bg-gray-500 rounded-lg shadow hover:bg-gray-600 transition"
@@ -439,7 +438,6 @@ function AddExpense({ userId, expenseToEdit, onDone }) {
                         Paste Image from Clipboard
                     </button>
                 </div>
-
                 <div className="mt-6">
                     <button
                         onClick={handleScan}
@@ -454,15 +452,12 @@ function AddExpense({ userId, expenseToEdit, onDone }) {
                         ) : 'Scan Receipt with AI'}
                     </button>
                 </div>
-               
                 {scanStatusMessage && (
                     <div className={`mt-4 p-3 text-sm text-center rounded-lg ${scanStatusMessage.includes('Scan complete') ? 'bg-green-100 text-green-700' : scanStatusMessage.includes('failed') || scanStatusMessage.includes('Error') ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-800'}`}>
                         {scanStatusMessage}
                     </div>
                 )}
-
-                {/* Optional: Image Preview Area */}
-                {base64ImageData && !previewUrl && ( // Don't show if share preview is already visible
+                {base64ImageData && !previewUrl && (
                     <div className="mt-4 p-2 bg-white rounded-lg shadow-inner">
                         <img src={`data:${imageMimeType};base64,${base64ImageData}`} alt="Receipt Preview" className="w-full max-h-48 object-contain rounded" />
                     </div>
@@ -475,19 +470,38 @@ function AddExpense({ userId, expenseToEdit, onDone }) {
 
                 <form onSubmit={handleSaveExpense} className="space-y-4">
 
-                    <div>
-                        <label htmlFor="amount" className="block text-sm font-medium text-gray-700">Amount</label>
-                        <input
-                            type="number"
-                            id="amount"
-                            name="amount"
-                            step="0.01"
-                            className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500"
-                            value={formData.amount}
-                            onChange={handleChange}
-                            required
-                        />
+                    {/* --- 5. UPDATED Amount & Headcount fields --- */}
+                    <div className="flex gap-4">
+                        <div className="flex-1">
+                            <label htmlFor="amount" className="block text-sm font-medium text-gray-700">Amount (Total)</label>
+                            <input
+                                type="number"
+                                id="amount"
+                                name="amount"
+                                step="0.01"
+                                className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                                value={formData.amount}
+                                onChange={handleChange}
+                                required
+                            />
+                        </div>
+                        <div className="w-1/3">
+                            <label htmlFor="headcount" className="block text-sm font-medium text-gray-700">Split By</label>
+                            <input
+                                type="number"
+                                id="headcount"
+                                name="headcount"
+                                min="1"
+                                step="1"
+                                className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                                value={formData.headcount}
+                                onChange={handleChange}
+                                required
+                            />
+                        </div>
                     </div>
+                    {/* --- END OF UPDATE --- */}
+
 
                     <div>
                         <label htmlFor="payerName" className="block text-sm font-medium text-gray-700">Paid To (Merchant/Payer)</label>
@@ -548,9 +562,21 @@ function AddExpense({ userId, expenseToEdit, onDone }) {
 
                     <button
                         type="submit"
-                        className="w-full py-3 px-4 text-white font-bold bg-green-600 rounded-lg shadow hover:bg-green-700 transition"
+                        className={`w-full py-3 px-4 text-white font-bold rounded-lg shadow transition ${
+                            isSaving 
+                                ? 'bg-gray-400 cursor-not-allowed' 
+                                : 'bg-green-600 hover:bg-green-700'
+                        }`}
+                        disabled={isSaving}
                     >
-                        Save Transaction
+                        {isSaving ? (
+                            <span className="flex items-center justify-center">
+                                <svg className="animate-spin h-5 w-5 text-white mr-3" viewBox="0 0 24 24"></svg>
+                                Saving...
+                            </span>
+                        ) : (
+                            'Save Transaction'
+                        )}
                     </button>
 
                     {saveStatus === 'success' && (

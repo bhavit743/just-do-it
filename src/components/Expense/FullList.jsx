@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react'; // <-- 1. IMPORT useMemo
+import React, { useState, useEffect, useMemo } from 'react';
 import { db } from '../../firebaseConfig';
 import { collection, onSnapshot, query, orderBy, doc, deleteDoc } from 'firebase/firestore';
 
@@ -24,14 +24,17 @@ function formatToIST_YYYY_MM(date) {
 const getCurrentMonth = () => formatToIST_YYYY_MM(new Date());
 
 // Utility to format currency
-const formatCurrency = (amount) => {
+const formatCurrency = (amount, currency = 'INR') => { // 1. Accept currency
     const numAmount = Number(amount) || 0;
-    return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 2 }).format(numAmount);
+    return new Intl.NumberFormat('en-IN', { 
+        style: 'currency', 
+        currency: currency, // 2. Use currency
+        minimumFractionDigits: 2 
+    }).format(numAmount);
 };
 
-// --- DELETED the getCategoryColor function ---
-
-function FullList({ userId }) {
+// --- 3. ACCEPT userId and userCurrency as props ---
+function FullList({ userId, userCurrency }) {
     const [expenses, setExpenses] = useState([]);
     const [categories, setCategories] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -40,13 +43,12 @@ function FullList({ userId }) {
 
     // --- UPDATED useEffect to load BOTH expenses and categories ---
     useEffect(() => {
-        if (!userId) return;
+        if (!userId) return; // This guard will now work correctly
         setLoading(true);
 
         let expensesLoaded = false;
         let categoriesLoaded = false;
 
-        // Helper to stop loading only when both are done
         const checkLoadingDone = () => {
             if (expensesLoaded && categoriesLoaded) {
                 setLoading(false);
@@ -87,7 +89,7 @@ function FullList({ userId }) {
             unsubscribeExpenses();
             unsubscribeCategories();
         };
-    }, [userId]);
+    }, [userId]); // This dependency is correct
 
     // Filter Expenses
     const filteredExpenses = expenses.filter(expense => {
@@ -113,8 +115,8 @@ function FullList({ userId }) {
         setExpenseToEdit(null);
     };
 
-    // --- 2. FIX: Color lookup map ---
-    const categoriesMap = useMemo(() => { // <-- Removed React.
+    // --- Color lookup map ---
+    const categoriesMap = useMemo(() => {
         return Object.fromEntries(
             categories.map(cat => [cat.name, cat.color || '#6B7280'])
         );
@@ -167,6 +169,9 @@ function FullList({ userId }) {
             ) : (
                 <div className="space-y-4">
                     {filteredExpenses.map((expense) => {
+                        const headcount = Number(expense.headcount) || 1;
+                        const userShare = (Number(expense.amount) || 0) / headcount;
+
                         const istDate = new Date(expense.timestamp.seconds * 1000 + IST_OFFSET);
                         const friendlyDate = istDate.toLocaleDateString('en-IN', { 
                             dateStyle: 'medium', 
@@ -197,9 +202,18 @@ function FullList({ userId }) {
                                 </div>
                                 
                                 <div className="flex items-center space-x-2 sm:space-x-4">
-                                    <span className={`text-xl font-extrabold ${categoryName === 'INCOME' ? 'text-green-600' : 'text-red-600'} whitespace-nowrap`}>
-                                        {categoryName === 'INCOME' ? '+' : '-'}{formatCurrency(expense.amount)}
-                                    </span>
+                                <div className="flex flex-col items-end">
+                                        <span className={`text-xl font-extrabold ${categoryName === 'INCOME' ? 'text-green-600' : 'text-red-600'} whitespace-nowrap`}>
+                                            {/* --- 4. Pass userCurrency --- */}
+                                            {categoryName === 'INCOME' ? '+' : '-'}{formatCurrency(userShare, userCurrency)}
+                                        </span>
+                                        {headcount > 1 && (
+                                            <span className="text-xs text-gray-500 font-medium">
+                                                {/* --- 4. Pass userCurrency --- */}
+                                                (Total: {formatCurrency(expense.amount, userCurrency)})
+                                            </span>
+                                        )}
+                                    </div>
                                     
                                     <button
                                         onClick={() => setExpenseToEdit(expense)} 

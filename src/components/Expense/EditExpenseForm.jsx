@@ -26,7 +26,7 @@ function EditExpenseForm({ userId, expenseToEdit, onDone }) {
     const [color, setColor] = useState('#6B7280');
     
     const [formData, setFormData] = useState({
-        amount: '', payerName: '', category: '', newCategory: '', date: '',
+        amount: '', payerName: '', category: '', newCategory: '', date: '', headcount: 1
     });
 
     // --- 2. UPDATE: Use the IST helper ---
@@ -58,6 +58,7 @@ function EditExpenseForm({ userId, expenseToEdit, onDone }) {
                 category: expenseToEdit.category || '',
                 newCategory: '',
                 date: expenseToEdit.timestamp ? formatDateKey(new Date(expenseToEdit.timestamp.seconds * 1000)) : formatDateKey(new Date()),
+                headcount: expenseToEdit.headcount || 1,
             });
             
             // This logic was in your file, but wasn't being used.
@@ -96,6 +97,7 @@ function EditExpenseForm({ userId, expenseToEdit, onDone }) {
             category: finalCategory,
             timestamp: Timestamp.fromDate(new Date(formData.date + 'T00:00:00')), 
             userId: userId,
+            headcount: Number(formData.headcount) || 1
         };
 
         try {
@@ -154,6 +156,21 @@ function EditExpenseForm({ userId, expenseToEdit, onDone }) {
                     required
                 />
             </div>
+
+            <div className="w-1/3">
+                    <label htmlFor="headcount" className="block text-sm font-medium text-gray-700">Split By</label>
+                    <input
+                        type="number"
+                        id="headcount"
+                        name="headcount"
+                        min="1"
+                        step="1"
+                        className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                        value={formData.headcount}
+                        onChange={handleChange}
+                        required
+                    />
+                </div>
 
             <div>
                 <label htmlFor="payerName" className="block text-sm font-medium text-gray-700">Paid To (Merchant/Payer)</label>

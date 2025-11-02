@@ -1,4 +1,6 @@
+// src/pages/ExpenseTracker.jsx
 import React, { useState } from 'react';
+import { useOutletContext } from 'react-router-dom'; // 1. Import the hook
 
 // Import all Expense components
 import AddExpense from '../components/Expense/AddExpense';
@@ -6,14 +8,33 @@ import FullList from '../components/Expense/FullList';
 import SummaryView from '../components/Expense/SummaryView';
 import ManageCategories from '../components/Expense/ManageCategories';
 
-// Accept { userId } prop from App.jsx
-function ExpenseTracker({ userId }) {
+function ExpenseTracker() {
   const [activeSubTab, setActiveSubTab] = useState('add');
+  
+  // 2. Get data from MainDashboard's context
+  // 'user' is the auth object, 'userProfile' is the Firestore document
+  const { user, userProfile } = useOutletContext(); 
+  const userId = user?.uid;
+  const userCurrency = userProfile?.currency || 'INR'; // Get currency
+
+  // State for editing
+  const [expenseToEdit, setExpenseToEdit] = useState(null);
 
   // Tailwind classes
   const tabClasses = "py-2 px-2 text-sm md:px-3 md:text-base font-medium border-b-2 transition-colors whitespace-nowrap";
   const activeClass = "border-blue-600 active-text bg-blue-50";
   const inactiveClass = "border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50";
+
+  // Handler to open the modal (passed to FullList)
+  const handleEdit = (expense) => {
+    setExpenseToEdit(expense);
+    // This model-based approach doesn't need to switch tabs
+  };
+
+  // Handler to close the modal (passed to EditExpenseForm)
+  const handleDone = () => {
+    setExpenseToEdit(null);
+  };
 
   const renderContent = () => {
     if (!userId) {
@@ -24,15 +45,16 @@ function ExpenseTracker({ userId }) {
       );
     }
     
+    // 3. Pass the correct props down
     switch (activeSubTab) {
       case 'add':
-        // Pass a simple onDone prop to switch tabs after saving
         return <AddExpense userId={userId} onDone={() => setActiveSubTab('list')} />;
       case 'list':
-        // No special props needed. FullList handles its own editing.
-        return <FullList userId={userId} />;
+        // FullList will now receive the userId and userCurrency
+        return <FullList userId={userId} userCurrency={userCurrency} />;
       case 'summary':
-        return <SummaryView userId={userId} />;
+         // SummaryView will now receive the userId and userCurrency
+        return <SummaryView userId={userId} userCurrency={userCurrency} />;
       case 'categories':
         return <ManageCategories userId={userId} />;
       default:
@@ -47,12 +69,11 @@ function ExpenseTracker({ userId }) {
       <div className="flex justify-center border-b border-gray-200 mb-6 overflow-x-auto">
         <div className="flex space-x-1 px-1">
           
-          {/* We just need the simple onClick again */}
           <button
             onClick={() => setActiveSubTab('add')}
             className={`${tabClasses} ${activeSubTab === 'add' ? activeClass : inactiveClass}`}
           >
-            Add Expense {/* Text is simple again */}
+            Add Expense
           </button>
 
           <button

@@ -17,6 +17,9 @@ import LoadingSpinner from './components/LoadingSpinner';
 import ActivityTracker from './pages/ActivityTracker';
 import ExpenseTracker from './pages/ExpenseTracker';
 import BatchUploadPage from './components/Expense/BatchUploadPage'; // 💡 Corrected import path
+import UploadSettingsPage from './pages/UploadSettingsPage';
+import ProfilePage from './pages/ProfilePage';
+import TutorialPage from './pages/TutorialPage';
 
 function App() {
   const [currentUser, setCurrentUser] = useState(null);
@@ -66,6 +69,18 @@ function App() {
         path="/signup" 
         element={currentUser ? <Navigate to="/" /> : <SignUpPage />} 
       />
+      <Route 
+          path="settings" 
+          element={<UploadSettingsPage userId={currentUser?.uid} />} 
+        />
+        <Route 
+          path="profile" 
+          element={<ProfilePage userId={currentUser?.uid} />} 
+        />
+        <Route 
+          path="tutorial"
+          element={<TutorialPage />} 
+        />
     </Routes>
   );
 }

@@ -25,16 +25,20 @@ function formatToIST_YYYY_MM(date) {
 
 // Utility functions
 const getCurrentMonth = () => formatToIST_YYYY_MM(new Date()); // Use IST for default month
-const formatCurrency = (amount) => {
+
+// --- 2. UPDATE formatCurrency to accept currency ---
+const formatCurrency = (amount, currency = 'INR') => {
     const numAmount = Number(amount) || 0;
-    return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 2 }).format(numAmount);
+    return new Intl.NumberFormat('en-IN', { 
+        style: 'currency', 
+        currency: currency, 
+        minimumFractionDigits: 2 
+    }).format(numAmount);
 };
 
-// --- 2. DELETED the getCategoryColor function ---
-
-function SummaryView({ userId }) {
+// --- 3. ACCEPT userCurrency prop ---
+function SummaryView({ userId, userCurrency }) {
     const [expenses, setExpenses] = useState([]);
-    // --- 3. ADD state for categories ---
     const [categories, setCategories] = useState([]);
     const [loading, setLoading] = useState(true);
     const [selectedMonth, setSelectedMonth] = useState(getCurrentMonth());
@@ -93,10 +97,8 @@ function SummaryView({ userId }) {
 
     // --- 5. UPDATE Calculate Summary to use dynamic colors ---
     useEffect(() => {
-        // Wait for data to be loaded
         if (loading) return; 
 
-        // Create a color lookup map
         const colorMap = Object.fromEntries(
             categories.map(cat => [cat.name, cat.color || '#6B7280'])
         );
@@ -107,34 +109,33 @@ function SummaryView({ userId }) {
         const filteredExpenses = expenses.filter(exp => exp.dateString === selectedMonth);
 
         filteredExpenses.forEach(exp => {
-            const amount = Number(exp.amount) || 0;
+            const headcount = Number(exp.headcount) || 1;
+            const userShare = (Number(exp.amount) || 0) / headcount;
+            
             if (exp.category.toUpperCase() !== 'INCOME') {
-                 totalSpending += amount;
+                 totalSpending += userShare;
             }
 
             const catName = (exp.category || 'UNCATEGORIZED').toUpperCase();
             
-            // Get the color from our dynamic map
             const color = colorMap[catName] || '#6B7280'; 
 
             if (!categoriesMap[catName]) {
                  categoriesMap[catName] = { amount: 0, color: color };
             }
-            categoriesMap[catName].amount += amount;
+            categoriesMap[catName].amount += userShare;
         });
 
-        // Convert map to sorted array (highest spending first)
         const categoriesArray = Object.entries(categoriesMap)
             .map(([name, data]) => ({ name, amount: data.amount, color: data.color }))
             .sort((a, b) => b.amount - a.amount);
 
         setSummary({ total: totalSpending, categories: categoriesArray });
-    }, [expenses, categories, selectedMonth, loading]); // <-- Add dependencies
+    }, [expenses, categories, selectedMonth, loading]);
 
-    // --- 6. Chart Configuration (Unchanged) ---
-    // This now works automatically because summary.categories contains the dynamic colors
+    // --- 6. Chart Configuration (UPDATED) ---
     const chartData = {
-        labels: summary.categories.map(c => `${c.name} (${formatCurrency(c.amount)})`),
+        labels: summary.categories.map(c => `${c.name} (${formatCurrency(c.amount, userCurrency)})`), // Pass currency
         datasets: [{
             data: summary.categories.map(c => c.amount),
             backgroundColor: summary.categories.map(c => c.color),
@@ -158,7 +159,7 @@ function SummaryView({ userId }) {
                     label: function({ label, raw, chart }) {
                         const total = chart.data.datasets[0].data.reduce((sum, val) => sum + val, 0);
                         const percentage = total > 0 ? ((raw / total) * 100).toFixed(1) : 0;
-                        return `${label}: ${formatCurrency(raw)} (${percentage}%)`;
+                        return `${label}: ${formatCurrency(raw, userCurrency)} (${percentage}%)`; // Pass currency
                     }
                 }
             }
@@ -209,7 +210,7 @@ function SummaryView({ userId }) {
                      <div className="p-6 bg-red-50 rounded-xl shadow-lg border border-red-200">
                         <p className="text-sm font-medium text-red-700">Total Spending in {friendlyMonthName}</p>
                         <p className="text-4xl font-extrabold text-red-600 mt-2">
-                           {formatCurrency(summary.total)}
+                           {formatCurrency(summary.total, userCurrency)} {/* 8. Pass currency */}
                         </p>
                     </div>
                 </div>
@@ -235,12 +236,11 @@ function SummaryView({ userId }) {
                 <h4 className="text-lg font-semibold text-gray-800 mb-4">Detailed Breakdown</h4>
                 
                 <div className="space-y-3">
-                    {/* This list also works automatically now */}
                     {summary.categories.map(cat => (
                         <div key={cat.name} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg border-l-4" style={{ borderColor: cat.color }}>
                             <span className="text-base font-medium text-gray-900">{cat.name}</span>
                             <span className={`text-base font-bold ${cat.name === 'INCOME' ? 'text-green-600' : 'text-red-600'}`}>
-                                {cat.name === 'INCOME' ? '+' : ''}{formatCurrency(cat.amount)}
+                                {cat.name === 'INCOME' ? '+' : ''}{formatCurrency(cat.amount, userCurrency)} {/* 9. Pass currency */}
                             </span>
                         </div>
                     ))}
