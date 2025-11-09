@@ -87,3 +87,6 @@ body {
 .bg-red-600{
     background-color: #ee6b6e;
 }
+.border-blue-600{
+  border-color: var(--clr-but-back);
+}

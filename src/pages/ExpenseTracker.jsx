@@ -7,6 +7,8 @@ import AddExpense from '../components/Expense/AddExpense';
 import FullList from '../components/Expense/FullList';
 import SummaryView from '../components/Expense/SummaryView';
 import ManageCategories from '../components/Expense/ManageCategories';
+import SavingsView from '../components/Expense/SavingsView';
+import WishlistView from '../components/Expense/WishlistView';
 
 function ExpenseTracker() {
   const [activeSubTab, setActiveSubTab] = useState('add');
@@ -57,6 +59,10 @@ function ExpenseTracker() {
         return <SummaryView userId={userId} userCurrency={userCurrency} />;
       case 'categories':
         return <ManageCategories userId={userId} />;
+        case 'savings': // <-- NEW CASE
+        return <SavingsView />
+        case 'wishlist': // <-- NEW CASE
+        return <WishlistView />;
       default:
         return <div>Select a sub-tab.</div>;
     }
@@ -66,7 +72,7 @@ function ExpenseTracker() {
     <>
       <h2 className="text-3xl font-bold text-gray-900 mb-4">Expense Tracker</h2>
       
-      <div className="flex justify-center border-b border-gray-200 mb-6 overflow-x-auto">
+      <div className="flex border-b border-gray-200 mb-6 overflow-x-auto" style={{paddingLeft: 0.5+'rem'}}>
         <div className="flex space-x-1 px-1">
           
           <button
@@ -95,6 +101,18 @@ function ExpenseTracker() {
             className={`${tabClasses} ${activeSubTab === 'categories' ? activeClass : inactiveClass}`}
           >
             Categories
+          </button>
+          <button
+            onClick={() => setActiveSubTab('savings')}
+            className={`${tabClasses} ${activeSubTab === 'savings' ? activeClass : inactiveClass}`}
+          >
+            Savings View
+          </button>
+          <button
+            onClick={() => setActiveSubTab('wishlist')} // <-- NEW TAB
+            className={`${tabClasses} ${activeSubTab === 'wishlist' ? activeClass : inactiveClass}`}
+          >
+            Wishlist
           </button>
         </div>
       </div>

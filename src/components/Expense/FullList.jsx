@@ -1,6 +1,7 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react'; // 1. Added useMemo
 import { db } from '../../firebaseConfig';
 import { collection, onSnapshot, query, orderBy, doc, deleteDoc } from 'firebase/firestore';
+import { CSVLink } from 'react-csv'; // 2. IMPORT CSVLink
 
 // --- IMPORT Modal AND THE NEW EditExpenseForm ---
 import Modal from '../common/Modal';
@@ -18,23 +19,34 @@ function formatToIST_YYYY_MM(date) {
   
   return `${year}-${month}`;
 }
+
+// 3. ADD THIS HELPER FUNCTION (for CSV)
+function formatToIST_YYYY_MM_DD(date) {
+  const utcMillis = new Date(date).getTime();
+  const istDate = new Date(utcMillis + IST_OFFSET);
+  const year = istDate.getUTCFullYear();
+  const month = String(istDate.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(istDate.getUTCDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
 // --- END OF IST HELPERS ---
 
 // Utility to get current month in YYYY-MM format
 const getCurrentMonth = () => formatToIST_YYYY_MM(new Date());
 
 // Utility to format currency
-const formatCurrency = (amount, currency = 'INR') => { // 1. Accept currency
+const formatCurrency = (amount, currency = 'INR') => { // Accept currency
     const numAmount = Number(amount) || 0;
     return new Intl.NumberFormat('en-IN', { 
         style: 'currency', 
-        currency: currency, // 2. Use currency
+        currency: currency, // Use currency
         minimumFractionDigits: 2 
     }).format(numAmount);
 };
 
-// --- 3. ACCEPT userId and userCurrency as props ---
-function FullList({ userId, userCurrency }) {
+// --- DELETED the getCategoryColor function ---
+
+function FullList({ userId, userCurrency }) { // Accept props
     const [expenses, setExpenses] = useState([]);
     const [categories, setCategories] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -43,7 +55,7 @@ function FullList({ userId, userCurrency }) {
 
     // --- UPDATED useEffect to load BOTH expenses and categories ---
     useEffect(() => {
-        if (!userId) return; // This guard will now work correctly
+        if (!userId) return; 
         setLoading(true);
 
         let expensesLoaded = false;
@@ -89,7 +101,7 @@ function FullList({ userId, userCurrency }) {
             unsubscribeExpenses();
             unsubscribeCategories();
         };
-    }, [userId]); // This dependency is correct
+    }, [userId]);
 
     // Filter Expenses
     const filteredExpenses = expenses.filter(expense => {
@@ -121,6 +133,28 @@ function FullList({ userId, userCurrency }) {
             categories.map(cat => [cat.name, cat.color || '#6B7280'])
         );
     }, [categories]);
+    
+    // --- 4. ADD: Prepare data for CSV export ---
+    const csvData = useMemo(() => {
+        const headers = ["Date", "Merchant", "Category", "Total Amount", "Split By", "Your Share"];
+        
+        const data = filteredExpenses.map(expense => {
+            const date = formatToIST_YYYY_MM_DD(expense.timestamp.seconds * 1000);
+            const headcount = Number(expense.headcount) || 1;
+            const userShare = (Number(expense.amount) || 0) / headcount;
+            
+            return [
+                date,
+                expense.payerName,
+                expense.category,
+                expense.amount,
+                headcount,
+                userShare
+            ];
+        });
+        
+        return [headers, ...data]; // Add headers to the data
+    }, [filteredExpenses]);
 
 
     if (loading) {
@@ -135,18 +169,33 @@ function FullList({ userId, userCurrency }) {
     return (
         <div className="space-y-6">
             
-            {/* Header and Filter (Unchanged) */}
+            {/* --- 5. UPDATE: Header and Filter --- */}
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center p-4 bg-gray-50 rounded-lg shadow-sm border border-gray-200">
                 <h3 className="text-2xl font-bold text-gray-900 mb-3 md:mb-0">All Transactions</h3>
-                <div className="flex flex-col sm:flex-row items-start sm:items-center space-y-2 sm:space-y-0 sm:space-x-4">
-                    <label htmlFor="month-filter" className="text-sm font-medium text-gray-700 whitespace-nowrap">Filter by Month:</label>
-                    <input
-                        type="month"
-                        id="month-filter"
-                        className="w-full sm:w-auto px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500"
-                        value={selectedMonth}
-                        onChange={(e) => setSelectedMonth(e.target.value)}
-                    />
+                
+                {/* Right side container */}
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full md:w-auto">
+                    {/* Month Filter */}
+                    <div className="flex items-center gap-2">
+                        <label htmlFor="month-filter" className="text-sm font-medium text-gray-700 whitespace-nowrap">Filter:</label>
+                        <input
+                            type="month"
+                            id="month-filter"
+                            className="w-full sm:w-auto px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                            value={selectedMonth}
+                            onChange={(e) => setSelectedMonth(e.target.value)}
+                        />
+                    </div>
+                    
+                    {/* CSV Export Button */}
+                    <CSVLink
+                        data={csvData}
+                        filename={`Expenses-${selectedMonth}.csv`}
+                        className="px-4 py-2 text-sm text-center font-medium text-white bg-green-600 rounded-lg shadow hover:bg-green-700 transition"
+                    >
+                        <i className="fas fa-download mr-2"></i>
+                        Export CSV
+                    </CSVLink>
                 </div>
             </div>
 
@@ -204,12 +253,10 @@ function FullList({ userId, userCurrency }) {
                                 <div className="flex items-center space-x-2 sm:space-x-4">
                                 <div className="flex flex-col items-end">
                                         <span className={`text-xl font-extrabold ${categoryName === 'INCOME' ? 'text-green-600' : 'text-red-600'} whitespace-nowrap`}>
-                                            {/* --- 4. Pass userCurrency --- */}
                                             {categoryName === 'INCOME' ? '+' : '-'}{formatCurrency(userShare, userCurrency)}
                                         </span>
                                         {headcount > 1 && (
                                             <span className="text-xs text-gray-500 font-medium">
-                                                {/* --- 4. Pass userCurrency --- */}
                                                 (Total: {formatCurrency(expense.amount, userCurrency)})
                                             </span>
                                         )}

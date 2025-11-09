@@ -24,6 +24,62 @@ function formatToIST_YYYY_MM_DD(date: Date | number): string {
 }
 
 // --- 'onCall' FUNCTION (FIXED) ---
+
+export const updateCategory = onCall({}, async (request) => {
+    // 1. Authenticate the user
+    if (!request.auth) {
+        throw new HttpsError("unauthenticated", "You must be logged in.");
+    }
+    const userId = request.auth.uid;
+
+    // 2. Get the data from the form
+    const { categoryId, oldName, newName, newKeywords, newColor } = request.data;
+
+    if (!categoryId || !oldName || !newName || !newKeywords || !newColor) {
+        throw new HttpsError("invalid-argument", "Missing required data.");
+    }
+    
+    // Prevent renaming to an existing category
+    if (oldName !== newName) {
+        const catQuery = await db.collection(`users/${userId}/categories`).where('name', '==', newName).get();
+        if (!catQuery.empty) {
+            throw new HttpsError("already-exists", "A category with this name already exists.");
+        }
+    }
+
+    try {
+        // 3. Create a batch
+        const batch = db.batch();
+
+        // 4. Find all expenses with the oldName
+        const expensesRef = db.collection(`users/${userId}/expenses`);
+        const q = expensesRef.where('category', '==', oldName);
+        const expensesSnap = await q.get();
+
+        // 5. Add an update operation for each matching expense
+        expensesSnap.docs.forEach(doc => {
+            batch.update(doc.ref, { category: newName });
+        });
+
+        // 6. Add an update for the category document itself
+        const categoryRef = db.doc(`users/${userId}/categories/${categoryId}`);
+        batch.update(categoryRef, {
+            name: newName,
+            keywords: newKeywords,
+            color: newColor
+        });
+
+        // 7. Commit all changes at once
+        await batch.commit();
+        
+        return { status: "success", updatedCount: expensesSnap.size };
+
+    } catch (error) {
+        console.error("Error in updateCategory:", error);
+        throw new HttpsError("internal", "An error occurred while updating the category.");
+    }
+});
+
 // --- 3. REMOVED the 'secrets: []' array ---
 export const scanReceipt = onCall(async (request) => {
     
@@ -195,6 +251,8 @@ async function saveExpense(extractedData: any, userId: string, categories: any[]
         timestamp: admin.firestore.Timestamp.fromDate(new Date((extractedData.date || formatToIST_YYYY_MM_DD(new Date())) + 'T00:00:00')),
         userId: userId,
         headcount: 1,
+        note: "Expense",
+        frequency: "Non-recurring",
     };
 
     await db.collection(`users/${userId}/expenses`).add(expenseData);
@@ -210,3 +268,4 @@ async function saveExpense(extractedData: any, userId: string, categories: any[]
     
     return expenseData;
 }
+

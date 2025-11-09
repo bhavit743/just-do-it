@@ -1,23 +1,27 @@
+// src/components/Expense/EditCategoryForm.jsx
 import React, { useState, useEffect } from 'react';
 import { db } from '../../firebaseConfig';
-import { doc, updateDoc } from 'firebase/firestore';
-
-// 1. IMPORT ColorPalette
+import { getFunctions, httpsCallable } from 'firebase/functions'; 
+import { Toast } from '@capacitor/toast';
 import ColorPalette from '../common/ColorPalette';
 
+// --- 1. THE FIX: Changed prop name from 'itemToEdit' to 'categoryToEdit' ---
 function EditCategoryForm({ userId, categoryToEdit, onDone }) {
+  
+  const [categoryName, setCategoryName] = useState('');
   const [keywordsInput, setKeywordsInput] = useState('');
   const [color, setColor] = useState('#6B7280');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  // Populate form when the component loads
+  // --- 2. THE FIX: Populate state from 'categoryToEdit' ---
   useEffect(() => {
     if (categoryToEdit) {
+      setCategoryName(categoryToEdit.name);
       setKeywordsInput(categoryToEdit.keywords ? categoryToEdit.keywords.join(', ') : '');
-      setColor(categoryToEdit.color || '#6B7280'); // Populate color
+      setColor(categoryToEdit.color || '#6B7280'); 
     }
-  }, [categoryToEdit]);
+  }, [categoryToEdit]); // This hook now depends on the correct prop
 
   // Handle the save (update) action
   const handleSubmit = async (e) => {
@@ -25,32 +29,48 @@ function EditCategoryForm({ userId, categoryToEdit, onDone }) {
     setLoading(true);
     setError('');
 
-    // Sanitize the keywords
+    const newName = categoryName.trim().toUpperCase();
+    if (!newName) {
+        setError("Category name cannot be empty.");
+        setLoading(false);
+        return;
+    }
+
     let keywordsArray = keywordsInput.split(',').map(k => k.trim().toUpperCase()).filter(k => k.length > 0);
-    if (!keywordsArray.includes(categoryToEdit.name)) {
-        keywordsArray.push(categoryToEdit.name);
+    if (!keywordsArray.includes(newName)) {
+        keywordsArray.push(newName);
     }
     keywordsArray = [...new Set(keywordsArray)]; 
 
     try {
-      const catDocRef = doc(db, `users/${userId}/categories/${categoryToEdit.id}`);
-      
-      // 3. UPDATE: Save the new color and keywords
-      await updateDoc(catDocRef, {
-        keywords: keywordsArray,
-        color: color // <-- Save color
-      });
-      
-      setLoading(false);
-      onDone(); // Close the modal
+        const functions = getFunctions();
+        const updateCategory = httpsCallable(functions, 'updateCategory');
+
+        // --- 3. THE FIX: Use 'categoryToEdit' when sending data ---
+        await updateCategory({
+            categoryId: categoryToEdit.id,
+            oldName: categoryToEdit.name, // Send the original name
+            newName: newName,
+            newKeywords: keywordsArray,
+            newColor: color
+        });
+        
+        Toast.show({ text: 'Category updated successfully!', duration: 'short' });
+        onDone(); // Close the modal
     } catch (e) {
-      console.error("Error updating category: ", e);
-      setError("Failed to update keywords.");
-      setLoading(false);
+        console.error("Error updating category: ", e);
+        if (e.code === 'functions/already-exists') {
+            setError("A category with this name already exists.");
+        } else {
+            setError("Failed to update category.");
+        }
+    } finally {
+        setLoading(false);
     }
   };
 
-  if (!categoryToEdit) return null;
+  // This guard is important
+  if (!categoryToEdit) return null; 
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
@@ -60,11 +80,17 @@ function EditCategoryForm({ userId, categoryToEdit, onDone }) {
         </div>
       )}
       
+      {/* Category Name (Editable) */}
       <div>
-        <label className="block text-sm font-medium text-gray-700">Category Name (Read-Only)</label>
-        <p className="mt-1 w-full px-3 py-2 border border-gray-200 rounded-lg bg-gray-100 text-gray-500">
-          {categoryToEdit.name}
-        </p>
+          <label className="block text-sm font-medium text-gray-700" htmlFor="category-name-edit">Category Name</label>
+          <input
+              id="category-name-edit"
+              className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+              type="text"
+              value={categoryName}
+              onChange={(e) => setCategoryName(e.target.value)}
+              required
+          />
       </div>
 
       {/* Edit the keywords */}
@@ -80,7 +106,7 @@ function EditCategoryForm({ userId, categoryToEdit, onDone }) {
           <p className="text-xs text-gray-500">These keywords help auto-categorize transactions.</p>
       </div>
 
-      {/* 5. SWAP: <input> for <ColorPalette> */}
+      {/* Color Palette */}
       <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">Color</label>
           <ColorPalette 
@@ -88,7 +114,8 @@ function EditCategoryForm({ userId, categoryToEdit, onDone }) {
               onChange={setColor} 
           />
       </div>
-
+      
+      {/* Save Button */}
       <div>
         <button 
           type="submit" 

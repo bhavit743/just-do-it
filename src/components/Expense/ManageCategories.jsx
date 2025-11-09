@@ -5,7 +5,7 @@ import { collection, addDoc, onSnapshot, orderBy, deleteDoc, doc, query, writeBa
 // 1. Import the new components
 import Modal from '../common/Modal';
 import EditCategoryForm from './EditCategoryForm';
-import ColorPalette from '../common/ColorPalette'; // <-- NEW IMPORT
+import ColorPalette from '../common/ColorPalette';// <-- NEW IMPORT
 
 // 2. Add 'color' to default categories
 const DEFAULT_CATEGORIES = [
