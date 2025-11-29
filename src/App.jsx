@@ -20,6 +20,7 @@ import BatchUploadPage from './components/Expense/BatchUploadPage'; // 💡 Corr
 import UploadSettingsPage from './pages/UploadSettingsPage';
 import ProfilePage from './pages/ProfilePage';
 import TutorialPage from './pages/TutorialPage';
+import SplitwiseDashboard from './components/Splitwise/SplitwiseDashboard';
 
 function App() {
   const [currentUser, setCurrentUser] = useState(null);
@@ -54,6 +55,16 @@ function App() {
         */}
         <Route index element={<ActivityTracker userId={currentUser?.uid} />} /> 
         <Route path="expense" element={<ExpenseTracker userId={currentUser?.uid} />} /> 
+        <Route path="splitwise" element={<SplitwiseDashboard />} />
+     
+        <Route 
+          path="profile" 
+          element={<ProfilePage userId={currentUser?.uid} />} 
+        />
+        <Route 
+          path="tutorial"
+          element={<TutorialPage />} 
+        />
         <Route 
           path="batch-upload" 
           element={<BatchUploadPage userId={currentUser?.uid} />} 
@@ -73,14 +84,8 @@ function App() {
           path="settings" 
           element={<UploadSettingsPage userId={currentUser?.uid} />} 
         />
-        <Route 
-          path="profile" 
-          element={<ProfilePage userId={currentUser?.uid} />} 
-        />
-        <Route 
-          path="tutorial"
-          element={<TutorialPage />} 
-        />
+        
+        
     </Routes>
   );
 }

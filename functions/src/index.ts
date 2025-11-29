@@ -1,15 +1,16 @@
-// --- 1. V2 IMPORTS ---
+// src/functions/index.ts
 import { onCall, HttpsError, onRequest } from "firebase-functions/v2/https";
-import { defineString } from "firebase-functions/params"; // <-- We WILL use this
-import * as admin from "firebase-admin";
+import { defineString } from "firebase-functions/params"; 
+import * as admin from "firebase-admin"; 
 
-const fetch = require("node-fetch");
+// Ensure fetch is available in the environment
+const fetch = require("node-fetch"); 
 
+// Initialize Firebase Admin SDK
 admin.initializeApp();
 const db = admin.firestore();
 
-// --- 2. DEFINE the secret ---
-// This tells the function to load the 'MY_APP_GEMINI_KEY' secret
+// --- 1. DEFINE the secret (V2 Standard) ---
 const geminiApiKey = defineString("MY_APP_GEMINI_KEY");
 
 // --- IST Helper Functions (Unchanged) ---
@@ -23,7 +24,9 @@ function formatToIST_YYYY_MM_DD(date: Date | number): string {
     return `${year}-${month}-${day}`;
 }
 
-// --- 'onCall' FUNCTION (FIXED) ---
+// ----------------------------------------------------------------------
+// --- MAIN CALLABLE FUNCTIONS (FIXED) ---
+// ----------------------------------------------------------------------
 
 export const updateCategory = onCall({}, async (request) => {
     // 1. Authenticate the user
@@ -80,7 +83,7 @@ export const updateCategory = onCall({}, async (request) => {
     }
 });
 
-// --- 3. REMOVED the 'secrets: []' array ---
+
 export const scanReceipt = onCall(async (request) => {
     
     if (!request.auth) {
@@ -109,10 +112,8 @@ export const scanReceipt = onCall(async (request) => {
 });
 
 
-// --- 'onRequest' FUNCTION (FIXED) ---
-// --- 4. REMOVED the 'secrets: []' array ---
 export const httpScanReceipt = onRequest(
-  { cors: true }, // <-- 'secrets' array is gone
+  { cors: true }, 
   async (request, response) => {
     
     if (request.method !== "POST") {
@@ -127,6 +128,7 @@ export const httpScanReceipt = onRequest(
     }
 
     try {
+      
       const userDoc = await db.doc(`users/${uid}`).get();
       if (!userDoc.exists) {
         response.status(404).send("User not found.");
@@ -164,9 +166,55 @@ export const httpScanReceipt = onRequest(
 );
 
 
-// --- HELPER FUNCTIONS ---
+/**
+ * Deletes a Group document AND all its associated subcollection expenses (Cascading Deletion).
+ * Callable from the client-side.
+ */
+export const deleteGroupAndExpenses = onCall(async (request) => { // FIX 1: Removed redundant context argument
+    
+    // FIX 2 & 3: Use request.auth and request.data for access
+    const userId = request.auth?.uid;
+    const groupId = request.data.groupId;
 
-// Infer MIME type
+    if (!userId) {
+        throw new HttpsError('unauthenticated', 'User must be logged in.');
+    }
+    if (!groupId) {
+        throw new HttpsError('invalid-argument', 'Group ID is required.'); // FIX 3: Property check
+    }
+
+    const groupRef = db.doc(`users/${userId}/groups/${groupId}`);
+    const expensesRef = db.collection(`users/${userId}/groups/${groupId}/expenses`);
+
+    try {
+        // 1. Delete all documents in the 'expenses' subcollection
+        const snapshot = await expensesRef.listDocuments();
+        const deletePromises: Promise<FirebaseFirestore.WriteResult>[] = []; // FIX 4: Explicitly type array
+        
+        snapshot.forEach(docRef => {
+            deletePromises.push(docRef.delete());
+        });
+
+        await Promise.all(deletePromises); // FIX 5: No change needed here
+        console.log(`Deleted ${snapshot.length} expenses from group ${groupId}`);
+
+        // 2. Delete the parent Group document
+        await groupRef.delete();
+        
+        return { status: "success", message: "Group and all expenses deleted successfully." };
+
+    } catch (error) {
+        console.error(`Error deleting group ${groupId}:`, error);
+        throw new HttpsError('internal', 'Failed to perform cascading deletion.', error);
+    }
+});
+
+
+// ----------------------------------------------------------------------
+// --- HELPER FUNCTION DEFINITIONS ---
+// ----------------------------------------------------------------------
+
+// Infer MIME type (REQUIRED for base64 scanning)
 function inferMimeType(base64Data: string): string {
     const signature = base64Data.substring(0, 5);
     if (signature === "/9j/4") {
@@ -178,7 +226,7 @@ function inferMimeType(base64Data: string): string {
     return "image/jpeg";
 }
 
-// Update callGeminiAPI to *receive* the key
+// Update callGeminiAPI to *receive* the key (REQUIRED for Gemini calls)
 async function callGeminiAPI(apiKey: string, imageData: string, imageMimeType: string, categories: any[]) {
     if (!apiKey) {
         throw new HttpsError("internal", "Gemini API Key is not available.");
@@ -237,7 +285,7 @@ async function callGeminiAPI(apiKey: string, imageData: string, imageMimeType: s
     return JSON.parse(jsonText);
 }
 
-// (saveExpense function is unchanged)
+// saveExpense function (REQUIRED for saving the transaction)
 async function saveExpense(extractedData: any, userId: string, categories: any[]) {
     let finalCategory = (extractedData.category || 'UNCATEGORIZED').toUpperCase();
     const categoryMatch = categories.find(c => c.name === finalCategory);
@@ -269,3 +317,35 @@ async function saveExpense(extractedData: any, userId: string, categories: any[]
     return expenseData;
 }
 
+export const searchUsers = onCall(async (request) => {
+    if (!request.auth) {
+        throw new HttpsError("unauthenticated", "User must be logged in.");
+    }
+
+    const searchText = (request.data.query || "").trim().toLowerCase();
+
+    try {
+        // FIX: Explicitly cast to 'FirebaseFirestore.Query' so we can overwrite it later
+        let usersQuery: FirebaseFirestore.Query = db.collection("users");
+
+        // If there is a search term, filter by it.
+        if (searchText.length > 0) {
+            usersQuery = usersQuery
+                .where("username", ">=", searchText)
+                .where("username", "<=", searchText + "\uf8ff");
+        }
+
+        // Now 'usersQuery' is always a Query, so .limit().get() works fine
+        const snapshot = await usersQuery.limit(10).get();
+
+        return snapshot.docs.map(doc => ({
+            uid: doc.id,
+            username: doc.data().username,
+            email: doc.data().email
+        }));
+
+    } catch (error) {
+        console.error("Error searching users:", error);
+        throw new HttpsError("internal", "Search failed.");
+    }
+});

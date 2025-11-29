@@ -1,4 +1,3 @@
-// src/components/Expense/SummaryView.jsx
 import React, { useState, useEffect } from 'react';
 import { db } from '../../firebaseConfig';
 import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
@@ -10,7 +9,7 @@ import { Chart as ChartJS, ArcElement, Tooltip, Legend } from 'chart.js';
 // Register Chart.js elements
 ChartJS.register(ArcElement, Tooltip, Legend);
 
-// --- 1. ADD IST HELPER FUNCTIONS ---
+// --- IST HELPER FUNCTIONS (Unchanged) ---
 const IST_OFFSET = 19800000; // 5.5 * 3600 * 1000
 
 function formatToIST_YYYY_MM(date) {
@@ -24,9 +23,9 @@ function formatToIST_YYYY_MM(date) {
 
 
 // Utility functions
-const getCurrentMonth = () => formatToIST_YYYY_MM(new Date()); // Use IST for default month
+const getCurrentMonth = () => formatToIST_YYYY_MM(new Date());
 
-// --- 2. UPDATE formatCurrency to accept currency ---
+// --- UPDATE formatCurrency to accept currency (Unchanged) ---
 const formatCurrency = (amount, currency = 'INR') => {
     const numAmount = Number(amount) || 0;
     return new Intl.NumberFormat('en-IN', { 
@@ -36,15 +35,16 @@ const formatCurrency = (amount, currency = 'INR') => {
     }).format(numAmount);
 };
 
-// --- 3. ACCEPT userCurrency prop ---
+// --- ACCEPT userCurrency prop ---
 function SummaryView({ userId, userCurrency }) {
     const [expenses, setExpenses] = useState([]);
     const [categories, setCategories] = useState([]);
     const [loading, setLoading] = useState(true);
     const [selectedMonth, setSelectedMonth] = useState(getCurrentMonth());
     const [summary, setSummary] = useState({ total: 0, categories: [] });
+    // REMOVED: const [splitFilter, setSplitFilter] = useState('all'); 
 
-    // --- 4. UPDATE useEffect to fetch BOTH collections ---
+    // --- Data Fetching (Unchanged) ---
     useEffect(() => {
         if (!userId) return;
         setLoading(true);
@@ -95,7 +95,7 @@ function SummaryView({ userId, userCurrency }) {
         };
     }, [userId]);
 
-    // --- 5. UPDATE Calculate Summary to use dynamic colors ---
+    // --- Calculate Summary (REVERTED to Headcount Logic) ---
     useEffect(() => {
         if (loading) return; 
 
@@ -106,11 +106,15 @@ function SummaryView({ userId, userCurrency }) {
         let totalSpending = 0;
         const categoriesMap = {};
         
-        const filteredExpenses = expenses.filter(exp => exp.dateString === selectedMonth);
+        // --- 1. Filter by month ---
+        let filteredExpenses = expenses.filter(exp => exp.dateString === selectedMonth);
+        
+        // REMOVED: Split filter application logic
 
         filteredExpenses.forEach(exp => {
+            // REVERTED: Calculate userShare based on headcount (original logic)
             const headcount = Number(exp.headcount) || 1;
-            const userShare = (Number(exp.amount) || 0) / headcount;
+            const userShare = (Number(exp.amount) || 0) / headcount; 
             
             if (exp.category.toUpperCase() !== 'INCOME') {
                  totalSpending += userShare;
@@ -131,11 +135,12 @@ function SummaryView({ userId, userCurrency }) {
             .sort((a, b) => b.amount - a.amount);
 
         setSummary({ total: totalSpending, categories: categoriesArray });
-    }, [expenses, categories, selectedMonth, loading]);
+        // REMOVED: splitFilter from dependency array
+    }, [expenses, categories, selectedMonth, loading]); 
 
-    // --- 6. Chart Configuration (UPDATED) ---
+    // --- Chart Configuration (Unchanged) ---
     const chartData = {
-        labels: summary.categories.map(c => `${c.name} (${formatCurrency(c.amount, userCurrency)})`), // Pass currency
+        labels: summary.categories.map(c => `${c.name} (${formatCurrency(c.amount, userCurrency)})`),
         datasets: [{
             data: summary.categories.map(c => c.amount),
             backgroundColor: summary.categories.map(c => c.color),
@@ -159,14 +164,15 @@ function SummaryView({ userId, userCurrency }) {
                     label: function({ label, raw, chart }) {
                         const total = chart.data.datasets[0].data.reduce((sum, val) => sum + val, 0);
                         const percentage = total > 0 ? ((raw / total) * 100).toFixed(1) : 0;
-                        return `${label}: ${formatCurrency(raw, userCurrency)} (${percentage}%)`; // Pass currency
+                        return `${label}: ${formatCurrency(raw, userCurrency)} (${percentage}%)`;
                     }
                 }
             }
         },
     };
     
-    // --- 7. Render Logic (Unchanged) ---
+    // REMOVED: Helper function for button styling
+        
     const friendlyMonthName = new Date(`${selectedMonth}-01T00:00:00Z`).toLocaleDateString('en-US', { 
         month: 'long', 
         year: 'numeric',
@@ -202,15 +208,17 @@ function SummaryView({ userId, userCurrency }) {
                 </div>
             </div>
 
+            {/* REMOVED: SPLIT TOGGLE FILTER */}
+
             {/* Core Summary Grid */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 
-                {/* Column 1: Total Expenses & Insights (Future AI Spot) */}
+                {/* Column 1: Total Expenses */}
                 <div className="lg:col-span-1 space-y-6">
                      <div className="p-6 bg-red-50 rounded-xl shadow-lg border border-red-200">
                         <p className="text-sm font-medium text-red-700">Total Spending in {friendlyMonthName}</p>
                         <p className="text-4xl font-extrabold text-red-600 mt-2">
-                           {formatCurrency(summary.total, userCurrency)} {/* 8. Pass currency */}
+                           {formatCurrency(summary.total, userCurrency)}
                         </p>
                     </div>
                 </div>
@@ -240,7 +248,7 @@ function SummaryView({ userId, userCurrency }) {
                         <div key={cat.name} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg border-l-4" style={{ borderColor: cat.color }}>
                             <span className="text-base font-medium text-gray-900">{cat.name}</span>
                             <span className={`text-base font-bold ${cat.name === 'INCOME' ? 'text-green-600' : 'text-red-600'}`}>
-                                {cat.name === 'INCOME' ? '+' : ''}{formatCurrency(cat.amount, userCurrency)} {/* 9. Pass currency */}
+                                {cat.name === 'INCOME' ? '+' : ''}{formatCurrency(cat.amount, userCurrency)}
                             </span>
                         </div>
                     ))}

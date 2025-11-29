@@ -1,13 +1,13 @@
-import React, { useState, useEffect, useMemo } from 'react'; // 1. Added useMemo
+import React, { useState, useEffect, useMemo } from 'react';
 import { db } from '../../firebaseConfig';
 import { collection, onSnapshot, query, orderBy, doc, deleteDoc } from 'firebase/firestore';
-import { CSVLink } from 'react-csv'; // 2. IMPORT CSVLink
+import { CSVLink } from 'react-csv';
 
 // --- IMPORT Modal AND THE NEW EditExpenseForm ---
-import Modal from '../common/Modal';
+import Modal from '../Common/Modal';
 import EditExpenseForm from './EditExpenseForm';
 
-// --- ADD IST HELPER FUNCTIONS ---
+// --- IST HELPER FUNCTIONS (Unchanged) ---
 const IST_OFFSET = 19800000; // 5.5 * 3600 * 1000
 
 function formatToIST_YYYY_MM(date) {
@@ -20,7 +20,6 @@ function formatToIST_YYYY_MM(date) {
   return `${year}-${month}`;
 }
 
-// 3. ADD THIS HELPER FUNCTION (for CSV)
 function formatToIST_YYYY_MM_DD(date) {
   const utcMillis = new Date(date).getTime();
   const istDate = new Date(utcMillis + IST_OFFSET);
@@ -35,25 +34,41 @@ function formatToIST_YYYY_MM_DD(date) {
 const getCurrentMonth = () => formatToIST_YYYY_MM(new Date());
 
 // Utility to format currency
-const formatCurrency = (amount, currency = 'INR') => { // Accept currency
+const formatCurrency = (amount, currency = 'INR') => {
     const numAmount = Number(amount) || 0;
     return new Intl.NumberFormat('en-IN', { 
         style: 'currency', 
-        currency: currency, // Use currency
+        currency: currency, 
         minimumFractionDigits: 2 
     }).format(numAmount);
 };
 
-// --- DELETED the getCategoryColor function ---
-
-function FullList({ userId, userCurrency }) { // Accept props
+function FullList({ userId, userCurrency }) {
     const [expenses, setExpenses] = useState([]);
     const [categories, setCategories] = useState([]);
     const [loading, setLoading] = useState(true);
     const [selectedMonth, setSelectedMonth] = useState(getCurrentMonth());
     const [expenseToEdit, setExpenseToEdit] = useState(null);
+    // REMOVED: const [splitFilter, setSplitFilter] = useState('all');
 
-    // --- UPDATED useEffect to load BOTH expenses and categories ---
+    // Handle Deletion (Unchanged)
+    const handleDeleteExpense = async (expenseId, payerName) => {
+        if (!window.confirm(`Delete transaction for "${payerName}"? This cannot be undone.`)) return;
+        try {
+            const expenseDocRef = doc(db, `users/${userId}/expenses/${expenseId}`);
+            await deleteDoc(expenseDocRef);
+        } catch (e) {
+            console.error("Error deleting expense: ", e);
+            alert("Failed to delete transaction.");
+        }
+    };
+
+    // Handle Done Editing (Unchanged)
+    const handleDoneEditing = () => {
+        setExpenseToEdit(null);
+    };
+
+    // --- Data Fetching (Unchanged) ---
     useEffect(() => {
         if (!userId) return; 
         setLoading(true);
@@ -103,57 +118,44 @@ function FullList({ userId, userCurrency }) { // Accept props
         };
     }, [userId]);
 
-    // Filter Expenses
+    // Filter Expenses (REVERTED to only Month Filter)
     const filteredExpenses = expenses.filter(expense => {
+        // Only Month Filter remains
         if (!expense.timestamp || typeof expense.timestamp.seconds !== 'number') return false;
         const expenseMonth = formatToIST_YYYY_MM(expense.timestamp.seconds * 1000);
         return expenseMonth === selectedMonth;
     });
 
-    // Handle Deletion
-    const handleDeleteExpense = async (expenseId, payerName) => {
-        if (!window.confirm(`Delete transaction for "${payerName}"? This cannot be undone.`)) return;
-        try {
-            const expenseDocRef = doc(db, `users/${userId}/expenses/${expenseId}`);
-            await deleteDoc(expenseDocRef);
-        } catch (e) {
-            console.error("Error deleting expense: ", e);
-            alert("Failed to delete transaction.");
-        }
-    };
-
-    // Handle Done Editing
-    const handleDoneEditing = () => {
-        setExpenseToEdit(null);
-    };
-
-    // --- Color lookup map ---
+    // --- Color lookup map (Unchanged) ---
     const categoriesMap = useMemo(() => {
         return Object.fromEntries(
             categories.map(cat => [cat.name, cat.color || '#6B7280'])
         );
     }, [categories]);
     
-    // --- 4. ADD: Prepare data for CSV export ---
+    // --- Prepare data for CSV export (REVERTED to Headcount/Simple Split) ---
     const csvData = useMemo(() => {
+        // Revert headers to match the simple headcount model
         const headers = ["Date", "Merchant", "Category", "Total Amount", "Split By", "Your Share"];
         
         const data = filteredExpenses.map(expense => {
             const date = formatToIST_YYYY_MM_DD(expense.timestamp.seconds * 1000);
-            const headcount = Number(expense.headcount) || 1;
-            const userShare = (Number(expense.amount) || 0) / headcount;
             
+            // Revert back to headcount logic
+            const headcount = Number(expense.headcount) || 1; 
+            const userShare = (Number(expense.amount) || 0) / headcount;
+
             return [
                 date,
                 expense.payerName,
                 expense.category,
                 expense.amount,
-                headcount,
+                headcount, // Revert to using headcount
                 userShare
             ];
         });
         
-        return [headers, ...data]; // Add headers to the data
+        return [headers, ...data];
     }, [filteredExpenses]);
 
 
@@ -166,10 +168,12 @@ function FullList({ userId, userCurrency }) { // Accept props
         );
     }
 
+    // Helper function for button styling (REMOVED)
+
     return (
         <div className="space-y-6">
             
-            {/* --- 5. UPDATE: Header and Filter --- */}
+            {/* --- Header and Filter --- */}
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center p-4 bg-gray-50 rounded-lg shadow-sm border border-gray-200">
                 <h3 className="text-2xl font-bold text-gray-900 mb-3 md:mb-0">All Transactions</h3>
                 
@@ -177,7 +181,7 @@ function FullList({ userId, userCurrency }) { // Accept props
                 <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full md:w-auto">
                     {/* Month Filter */}
                     <div className="flex items-center gap-2">
-                        <label htmlFor="month-filter" className="text-sm font-medium text-gray-700 whitespace-nowrap">Filter:</label>
+                        <label htmlFor="month-filter" className="text-sm font-medium text-gray-700 whitespace-nowrap">Month:</label>
                         <input
                             type="month"
                             id="month-filter"
@@ -198,6 +202,9 @@ function FullList({ userId, userCurrency }) { // Accept props
                     </CSVLink>
                 </div>
             </div>
+            
+            {/* REMOVED: SPLIT TOGGLE FILTER */}
+
 
             {/* Modal (Unchanged) */}
             {expenseToEdit && (
@@ -210,7 +217,7 @@ function FullList({ userId, userCurrency }) { // Accept props
                 </Modal>
             )}
 
-            {/* Transaction List */}
+            {/* Transaction List (REVERTED to Headcount Logic) */}
             {filteredExpenses.length === 0 ? (
                 <div className="p-6 bg-yellow-50 text-yellow-800 rounded-lg shadow-md text-center">
                     <p className="font-semibold">No expenses found for {selectedMonth}.</p>
@@ -218,7 +225,10 @@ function FullList({ userId, userCurrency }) { // Accept props
             ) : (
                 <div className="space-y-4">
                     {filteredExpenses.map((expense) => {
+                        // Use basic headcount/yourShare calculation
                         const headcount = Number(expense.headcount) || 1;
+                        // Determine if it was split for display
+                        const isSplitExpense = headcount > 1; 
                         const userShare = (Number(expense.amount) || 0) / headcount;
 
                         const istDate = new Date(expense.timestamp.seconds * 1000 + IST_OFFSET);
@@ -228,7 +238,6 @@ function FullList({ userId, userCurrency }) { // Accept props
                         });
                         
                         const categoryName = (expense.category || 'UNCATEGORIZED').toUpperCase();
-                        
                         const categoryColor = categoriesMap[categoryName] || '#6B7280';
                         
                         return (
@@ -238,16 +247,24 @@ function FullList({ userId, userCurrency }) { // Accept props
                                     <p className="text-lg font-bold text-gray-900 truncate">{expense.payerName || 'Unknown Payer'}</p>
                                     <p className="text-sm text-gray-500">{friendlyDate}</p>
                                     
-                                    <span 
-                                        className="inline-flex self-start px-3 py-1 text-xs font-medium rounded-full"
-                                        style={{ 
-                                            backgroundColor: `${categoryColor}20`,
-                                            color: categoryColor,
-                                            borderRadius:'0.3rem'
-                                        }}
-                                    >
-                                        {categoryName}
-                                    </span>
+                                    <div className="flex items-center space-x-2">
+                                        <span 
+                                            className="inline-flex self-start px-3 py-1 text-xs font-medium rounded-full"
+                                            style={{ 
+                                                backgroundColor: `${categoryColor}20`,
+                                                color: categoryColor,
+                                                borderRadius:'0.3rem'
+                                            }}
+                                        >
+                                            {categoryName}
+                                        </span>
+                                        {/* Re-add simple split flag for headcount > 1 */}
+                                        {isSplitExpense && (
+                                            <span className="text-xs font-bold text-gray-600 px-3 py-1 bg-gray-200 rounded-full">
+                                                Split x{headcount}
+                                            </span>
+                                        )}
+                                    </div>
                                 </div>
                                 
                                 <div className="flex items-center space-x-2 sm:space-x-4">
@@ -255,7 +272,7 @@ function FullList({ userId, userCurrency }) { // Accept props
                                         <span className={`text-xl font-extrabold ${categoryName === 'INCOME' ? 'text-green-600' : 'text-red-600'} whitespace-nowrap`}>
                                             {categoryName === 'INCOME' ? '+' : '-'}{formatCurrency(userShare, userCurrency)}
                                         </span>
-                                        {headcount > 1 && (
+                                        {isSplitExpense && (
                                             <span className="text-xs text-gray-500 font-medium">
                                                 (Total: {formatCurrency(expense.amount, userCurrency)})
                                             </span>

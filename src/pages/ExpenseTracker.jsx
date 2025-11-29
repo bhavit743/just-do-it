@@ -10,6 +10,7 @@ import ManageCategories from '../components/Expense/ManageCategories';
 import SavingsView from '../components/Expense/SavingsView';
 import WishlistView from '../components/Expense/WishlistView';
 
+
 function ExpenseTracker() {
   const [activeSubTab, setActiveSubTab] = useState('add');
   
@@ -63,6 +64,7 @@ function ExpenseTracker() {
         return <SavingsView />
         case 'wishlist': // <-- NEW CASE
         return <WishlistView />;
+       
       default:
         return <div>Select a sub-tab.</div>;
     }

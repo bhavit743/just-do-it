@@ -1,6 +1,5 @@
-// src/components/Expense/AddExpense.jsx
-import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useEffect, useCallback } from 'react';
+import { useNavigate, Link } from 'react-router-dom';
 import { db } from '../../firebaseConfig';
 import { collection, addDoc, onSnapshot, query, orderBy, Timestamp } from 'firebase/firestore'; 
 import { getFunctions, httpsCallable } from 'firebase/functions';
@@ -11,8 +10,10 @@ import { Filesystem } from '@capacitor/filesystem';
 import { Capacitor } from '@capacitor/core';
 import { ShareExtension } from 'capacitor-share-extension';
 
-// --- 1. ADD IST HELPER FUNCTION ---
-const IST_OFFSET = 19800000; // 5.5 * 3600 * 1000
+// Core Logic (REMOVED: import { updateFriendBalance } from '../../utils/friendBalanceUtils';)
+
+// --- IST HELPER FUNCTION (Unchanged) ---
+const IST_OFFSET = 19800000;
 
 function formatToIST_YYYY_MM_DD(date) {
   const utcMillis = new Date(date).getTime();
@@ -22,25 +23,28 @@ function formatToIST_YYYY_MM_DD(date) {
   const day = String(istDate.getUTCDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
 }
+function formatDateKey(date) { return formatToIST_YYYY_MM_DD(date); }
 // --- END OF IST HELPER ---
-
   
 function AddExpense({ userId, expenseToEdit, onDone }) {
     const navigate = useNavigate();
     const [categories, setCategories] = useState([]);
+    // REMOVED: [friends, setFriends]
     const [loading, setLoading] = useState(true);
     
-    // --- 2. UPDATE formatDateKey to use IST ---
-    const [formData, setFormData] = useState({
+    // Default form data (REVERTED to simple headcount)
+    const defaultFormData = {
         amount: '', 
         payerName: '', 
         category: '', 
         newCategory: '', 
-        date: formatToIST_YYYY_MM_DD(new Date()), // Use IST helper
-        headcount: 1,
+        date: formatDateKey(new Date()),
+        headcount: 1, // <-- RESTORED
         note: '', 
-        frequency: 'Non-Recurring'
-    });
+        frequency: 'Non-Recurring',
+    };
+
+    const [formData, setFormData] = useState(defaultFormData);
     const [saveStatus, setSaveStatus] = useState(null);
     const [isSaving, setIsSaving] = useState(false);
 
@@ -52,15 +56,9 @@ function AddExpense({ userId, expenseToEdit, onDone }) {
     const [isScanning, setIsScanning] = useState(false);
     const [previewUrl, setPreviewUrl] = useState(null);
     
-    const [activeView, setActiveView] = useState('manual'); // 'manual' or 'scan'
-
+    const [activeView, setActiveView] = useState('manual'); 
     const isEditMode = Boolean(expenseToEdit);
-
-    // --- 3. UPDATE formatDateKey to use IST ---
-    function formatDateKey(date) {
-        return formatToIST_YYYY_MM_DD(date);
-    }
-
+    
     // Utility: Resets scan and file state
     const resetScannerState = () => {
         setBase64ImageData(null);
@@ -70,6 +68,30 @@ function AddExpense({ userId, expenseToEdit, onDone }) {
         setPreviewUrl(null); 
         const fileInput = document.getElementById('file-upload');
         if (fileInput) fileInput.value = null; 
+    };
+    
+    // Utility: Processes the file object (for Upload/Paste)
+    const processFile = (file) => {
+        setScanStatusMessage("Processing image...");
+        setFileName(file.name);
+
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            const parts = event.target.result.split(',');
+            const base64 = parts[1];
+            const mime = parts[0].match(/:(.*?);/)[1];
+            const dataUrl = event.target.result;
+
+            setBase64ImageData(base64);
+            setImageMimeType(mime);
+            setPreviewUrl(dataUrl); // Set preview URL
+            setScanStatusMessage("Image ready to scan.");
+        };
+        reader.onerror = () => {
+            setScanStatusMessage("Error reading file.");
+            resetScannerState();
+        };
+        reader.readAsDataURL(file);
     };
 
     // --- 1. Fetch Categories (Unchanged) ---
@@ -84,7 +106,11 @@ function AddExpense({ userId, expenseToEdit, onDone }) {
         return () => unsubscribe();
     }, [userId]);
 
-    // --- 2. ShareExtension (Unchanged) ---
+    // --- 2. Fetch Friends (REMOVED) ---
+    // useEffect(() => { /* ... removed logic ... */ }, [userId]);
+
+
+    // --- 3. ShareExtension (Restored Logic) ---
     useEffect(() => {
         if (isEditMode) return; 
         const checkShare = async () => {
@@ -104,7 +130,7 @@ function AddExpense({ userId, expenseToEdit, onDone }) {
               const mime = decodeURIComponent(item.type);
               const name = item.title || 'shared-image.jpg';
               const base64Data = fileData.data; 
-              const dataUrl = `data:${mime};base64,${base64Data}`;
+              const dataUrl = `data:${mime};base64,${base64Data}`; // Reconstruct data URL
       
               setPreviewUrl(dataUrl);
               setBase64ImageData(base64Data);
@@ -121,137 +147,19 @@ function AddExpense({ userId, expenseToEdit, onDone }) {
         };
         checkShare();
       }, [isEditMode]);
-
-    // --- 4. Form Handlers (Unchanged) ---
+      
+    // --- 4. Form Handlers (Restored Simple Logic) ---
     const handleChange = (e) => {
         const { name, value } = e.target;
+        
         setFormData(prev => ({ ...prev, [name]: value }));
+
         if (name === 'category' && value !== '--OTHER--') {
             setFormData(prev => ({ ...prev, newCategory: '' }));
         }
     };
 
-    // --- 5. Save Logic (Unchanged) ---
-    const handleSaveExpense = async (e) => {
-        e.preventDefault();
-        setSaveStatus(null);
-        setIsSaving(true)
-
-        let finalCategory = formData.category;
-        let newCategoryKeywords = [];
-
-        if (finalCategory === '--OTHER--') {
-            finalCategory = formData.newCategory.trim().toUpperCase();
-            if (!finalCategory) { alert("Please enter a name for the new category."); return; }
-            newCategoryKeywords.push(finalCategory);
-        }
-
-        const expenseData = {
-            amount: parseFloat(formData.amount),
-            payerName: formData.payerName.trim(),
-            category: finalCategory,
-            timestamp: Timestamp.fromDate(new Date(formData.date + 'T00:00:00')), 
-            userId: userId,
-            headcount: Number(formData.headcount) || 1,
-            note: formData.note.trim(), 
-            frequency: formData.frequency 
-        };
-
-        try {
-            await addDoc(collection(db, `users/${userId}/expenses`), expenseData);
-
-            if (finalCategory === formData.newCategory.trim().toUpperCase() && !categories.find(c => c.name === finalCategory)) {
-                await addDoc(collection(db, `users/${userId}/categories`), {
-                    name: finalCategory,
-                    keywords: newCategoryKeywords,
-                    createdAt: Timestamp.now(),
-                    color: '#6B7280'
-                });
-            }
-
-            setSaveStatus('success');
-            if (onDone) onDone(); 
-
-            setFormData({ 
-                amount: '', payerName: '', category: '', newCategory: '', date: formatDateKey(new Date()),
-                headcount: 1, note: '', frequency: 'Non-Recurring' 
-            });
-            resetScannerState();
-            setTimeout(() => setSaveStatus(null), 3000);
-
-        } catch (error) {
-            console.error("Error saving expense:", error);
-            setSaveStatus('error');
-            setTimeout(() => setSaveStatus(null), 5000);
-            alert("Failed to save transaction.");
-        } finally{
-            setIsSaving(false)
-        }
-    };
-
-    
-    // --- 7. Scan/Process Handlers (UPDATED) ---
-    const handleScan = async () => {
-        if (!base64ImageData || !imageMimeType) {
-            setScanStatusMessage("Please upload or paste an image first.");
-            return;
-        }
-
-        setIsScanning(true);
-        setScanStatusMessage("Scanning & Saving...");
-
-        try {
-            const functions = getFunctions();
-            const scanReceipt = httpsCallable(functions, 'scanReceipt');
-
-            const result = await scanReceipt({ 
-                base64Data: base64ImageData, 
-                // mimeType is inferred on the backend
-            });
-            
-            const { savedData } = result.data;
-
-            setScanStatusMessage(`Saved: ${savedData.payerName} ($${savedData.amount})`);
-            Toast.show({ text: `Saved: ${savedData.payerName} ($${savedData.amount})`, duration: 'long' });
-            resetScannerState(); 
-            
-            setTimeout(() => {
-                setScanStatusMessage(null);
-                if (onDone) onDone(); // Go to list after saving
-            }, 2000);
-
-        } catch (err) {
-            console.error("Scan error:", err);
-            setScanStatusMessage(`Scan failed: ${err.message}`);
-            Toast.show({ text: `Scan failed: ${err.message}`, duration: 'long' });
-        } finally {
-            setIsScanning(false);
-        }
-    };
-
-    // --- 4. RE-ADD processFile ---
-    const processFile = (file) => {
-        setScanStatusMessage("Processing image...");
-        setFileName(file.name);
-
-        const reader = new FileReader();
-        reader.onload = (event) => {
-            const parts = event.target.result.split(',');
-            const base64 = parts[1];
-            const mime = parts[0].match(/:(.*?);/)[1];
-
-            setBase64ImageData(base64);
-            setImageMimeType(mime);
-            setScanStatusMessage("Image ready to scan.");
-        };
-        reader.onerror = () => {
-            setScanStatusMessage("Error reading file.");
-            resetScannerState();
-        };
-        reader.readAsDataURL(file);
-    };
-
-    // --- 5. RE-ADD handleFileSelect ---
+    // --- File Input Handlers (Restored) ---
     const handleFileSelect = (e) => {
         const file = e.target.files[0];
         if (file) {
@@ -261,7 +169,6 @@ function AddExpense({ userId, expenseToEdit, onDone }) {
         }
     };
 
-    // --- 6. RE-ADD handlePaste ---
     const handlePaste = async () => {
         setScanStatusMessage("Reading clipboard...");
         try {
@@ -293,7 +200,113 @@ function AddExpense({ userId, expenseToEdit, onDone }) {
         }
     };
 
-    // --- 8. Render Logic ---
+    // --- 5. CORE SAVE LOGIC (REVERTED TO HEADCOUNT) ---
+    const handleSaveExpense = async (e) => {
+        e.preventDefault();
+        setSaveStatus(null);
+        setIsSaving(true);
+
+        const totalAmount = parseFloat(formData.amount);
+        if (isNaN(totalAmount) || totalAmount <= 0) {
+            alert("Please enter a valid amount.");
+            setIsSaving(false);
+            return;
+        }
+
+        let finalCategory = formData.category;
+        let newCategoryKeywords = [];
+
+        if (finalCategory === '--OTHER--') {
+            finalCategory = formData.newCategory.trim().toUpperCase();
+            if (!finalCategory) { alert("Please enter a name for the new category."); setIsSaving(false); return; }
+            newCategoryKeywords.push(finalCategory);
+        }
+        
+        // --- RESTORE HEADCOUNT/SIMPLE SAVE STRUCTURE ---
+        const expenseData = {
+            amount: totalAmount,
+            payerName: formData.payerName.trim(),
+            category: finalCategory,
+            timestamp: Timestamp.fromDate(new Date(formData.date + 'T00:00:00')), 
+            userId: userId,
+            headcount: Number(formData.headcount) || 1, // <-- RESTORED
+            note: formData.note.trim(), 
+            frequency: formData.frequency,
+            // Split fields (yourShare, split, etc.) are removed from save data
+        };
+
+        try {
+            await addDoc(collection(db, `users/${userId}/expenses`), expenseData);
+
+            // No debt update logic here anymore
+
+            if (finalCategory === formData.newCategory.trim().toUpperCase() && !categories.find(c => c.name === finalCategory)) {
+                await addDoc(collection(db, `users/${userId}/categories`), {
+                    name: finalCategory,
+                    keywords: newCategoryKeywords,
+                    createdAt: Timestamp.now(),
+                    color: '#6B7280'
+                });
+            }
+
+            setSaveStatus('success');
+            if (onDone) onDone(); 
+
+            setFormData(defaultFormData);
+            resetScannerState();
+            Toast.show({ text: 'Transaction saved!', duration: 'short' });
+            setTimeout(() => setSaveStatus(null), 3000);
+
+        } catch (error) {
+            console.error("Error saving expense:", error);
+            setSaveStatus('error');
+            Toast.show({ text: `Failed to save transaction: ${error.message}`, duration: 'long' });
+            setTimeout(() => setSaveStatus(null), 5000);
+        } finally{
+            setIsSaving(false);
+        }
+    };
+
+    // --- 6. Scan/Process Handlers (Restored Logic) ---
+    const handleScan = async () => {
+        if (!base64ImageData || !imageMimeType) {
+            setScanStatusMessage("Please upload or paste an image first.");
+            return;
+        }
+
+        setIsScanning(true);
+        setScanStatusMessage("Scanning & Saving...");
+
+        try {
+            const functions = getFunctions();
+            const scanReceipt = httpsCallable(functions, 'scanReceipt');
+
+            const result = await scanReceipt({ 
+                base64Data: base64ImageData, 
+            });
+            
+            const { savedData } = result.data;
+            
+            setScanStatusMessage(`Saved: ${savedData.payerName} ($${savedData.amount})`);
+            Toast.show({ text: `Saved: ${savedData.payerName} ($${savedData.amount})`, duration: 'long' });
+            resetScannerState(); 
+            
+            setTimeout(() => {
+                setScanStatusMessage(null);
+                if (onDone) onDone();
+            }, 2000);
+
+        } catch (err) {
+            console.error("Scan error:", err);
+            setScanStatusMessage(`Scan failed: ${err.message}`);
+            Toast.show({ text: `Scan failed: ${err.message}`, duration: 'long' });
+        } finally {
+            setIsScanning(false);
+        }
+    };
+
+
+    // --- 7. Render Logic ---
     if (loading) {
         return (
             <div className="text-center py-8">
@@ -308,23 +321,24 @@ function AddExpense({ userId, expenseToEdit, onDone }) {
     ));
     const isScanButtonDisabled = isScanning || !base64ImageData;
 
-    if (isEditMode) return null; // This component is only for ADDING
+
+    if (isEditMode) return null;
 
     return (
         <div className="space-y-6">
+            
             {/* Batch Upload Button (Unchanged) */}
             <div className="mb-4">
-              <button 
-                type="button"
-                onClick={() => navigate('/batch-upload')}
-                className="w-full flex items-center justify-center p-3 text-sm font-bold text-primary bg-primary-light rounded-full shadow-sm hover:bg-blue-200 transition"
+              <Link 
+                to="/batch-upload"
+                className="w-full flex items-center justify-center p-3 text-sm font-bold text-blue-600 bg-blue-100 rounded-full shadow-sm hover:bg-blue-200 transition"
               >
                 <i className="fas fa-images mr-2"></i>
                 Have multiple receipts? Go to Batch Upload
-              </button>
+              </Link>
             </div>
 
-            {/* --- Toggle Buttons --- */}
+            {/* --- Toggle Buttons (Unchanged) --- */}
             <div className="grid grid-cols-2 gap-2 p-1 bg-gray-200 rounded-lg">
                 <button
                     onClick={() => setActiveView('manual')}
@@ -344,7 +358,7 @@ function AddExpense({ userId, expenseToEdit, onDone }) {
                 </button>
             </div>
 
-            {/* --- View 1: Scan --- */}
+            {/* --- View 1: Scan (Restored Content) --- */}
             {activeView === 'scan' && (
                 <div className="bg-gray-50 p-6 rounded-xl shadow-inner border border-gray-200">
                     <h3 className="text-xl font-semibold mb-6 text-gray-800">Scan & Auto-Fill</h3>
@@ -355,7 +369,7 @@ function AddExpense({ userId, expenseToEdit, onDone }) {
 
                     {previewUrl && (
                         <div className="bg-white p-5 rounded-2xl shadow-md border border-gray-100 mb-4">
-                            <h3 className="text-lg font-semibold text-text-dark mb-3">Image Preview</h3>
+                            <h3 className="text-lg font-semibold text-gray-800 mb-3">Image Preview</h3>
                             <img 
                                 src={previewUrl} 
                                 alt="Shared image preview" 
@@ -404,13 +418,14 @@ function AddExpense({ userId, expenseToEdit, onDone }) {
                 </div>
             )}
 
-            {/* --- View 2: Manual --- */}
+            {/* --- View 2: Manual (UPDATED) --- */}
             {activeView === 'manual' && (
                 <div className="bg-white p-6 rounded-xl shadow-xl">
                     <h3 className="text-xl font-semibold mb-6 text-gray-800">Manual Transaction Entry</h3>
 
                     <form onSubmit={handleSaveExpense} className="space-y-4">
 
+                        {/* --- Amount & Headcount Input (RESTORED) --- */}
                         <div className="flex gap-4">
                             <div className="flex-1">
                                 <label htmlFor="amount" className="block text-sm font-medium text-gray-700">Amount (Total)</label>
@@ -429,7 +444,10 @@ function AddExpense({ userId, expenseToEdit, onDone }) {
                                 />
                             </div>
                         </div>
+                        {/* --- END RESTORED INPUTS --- */}
 
+
+                        {/* --- Existing Payer Name, Frequency, Category, Date, Note inputs go here --- */}
                         <div>
                             <label htmlFor="payerName" className="block text-sm font-medium text-gray-700">Paid To (Merchant/Payer)</label>
                             <input
@@ -439,7 +457,6 @@ function AddExpense({ userId, expenseToEdit, onDone }) {
                             />
                         </div>
 
-                        {/* --- NEW: Frequency --- */}
                         <div>
                             <label htmlFor="frequency" className="block text-sm font-medium text-gray-700">Type</label>
                             <select
@@ -486,7 +503,6 @@ function AddExpense({ userId, expenseToEdit, onDone }) {
                             />
                         </div>
 
-                        {/* --- NEW: Note --- */}
                         <div>
                             <label htmlFor="note" className="block text-sm font-medium text-gray-700">Note (Optional)</label>
                             <input
@@ -496,11 +512,13 @@ function AddExpense({ userId, expenseToEdit, onDone }) {
                                 placeholder="e.g., Dinner with team"
                             />
                         </div>
+                        {/* --- End Existing Inputs --- */}
+
 
                         <button
                             type="submit"
                             className={`w-full py-3 px-4 text-white font-bold rounded-lg shadow transition ${
-                                isSaving 
+                                isSaving
                                     ? 'bg-gray-400 cursor-not-allowed' 
                                     : 'bg-green-600 hover:bg-green-700'
                             }`}

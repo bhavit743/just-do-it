@@ -4,6 +4,7 @@ import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { db } from '../firebaseConfig'; 
 import { doc, onSnapshot } from 'firebase/firestore'; 
 import { StatusBar, Style } from '@capacitor/status-bar';
+import Navbar from '../components/common/Navbar';
 
 // Accept the 'user' (Auth object) as a prop from App.jsx
 function MainDashboard({ user }) {
@@ -41,7 +42,7 @@ function MainDashboard({ user }) {
     <div className="min-h-screen">
       
       {/* Header */}
-      <header className="bg-white shadow-md">
+      {/* <header className="bg-white shadow-md">
         <div style={{ height: 'env(safe-area-inset-top)' }}></div>
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex justify-between items-center">       
             <h1 className="text-2xl font-bold text-gray-900">JUST DO IT</h1>
@@ -61,14 +62,15 @@ function MainDashboard({ user }) {
               </button>
             </div>
         </div>
-      </header>
+      </header> */}
+      <Navbar />
 
       {/* --- THIS IS THE TAB NAVIGATION YOU WERE MISSING --- */}
-      <nav className="bg-white border-b border-gray-200">
+      {/* <nav className="bg-white border-b border-gray-200">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex space-x-4 justify-center w-full"> 
             
-            {/* Activity Tracker Tab */}
+   
             <button
               onClick={() => navigate('/')}
               className={`${tabClasses} ${!isActive('/expense') ? activeClass : inactiveClass} flex-1`}
@@ -77,7 +79,7 @@ function MainDashboard({ user }) {
               <span>Activity Tracker</span>
             </button>
 
-            {/* Expense Tracker Tab */}
+         
             <button
               onClick={() => navigate('/expense')}
               className={`${tabClasses} ${isActive('/expense') ? activeClass : inactiveClass} flex-1`}
@@ -87,7 +89,7 @@ function MainDashboard({ user }) {
             </button>
           </div>
         </div>
-      </nav>
+      </nav> */}
       {/* --- END OF TAB NAVIGATION --- */}
 
 

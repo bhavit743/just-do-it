@@ -25,24 +25,8 @@ function TutorialPage() {
   }, []);
 
   return (
-    <div className="min-h-screen">
-      
-      {/* Header (Same as MainDashboard) */}
-      <header className="bg-white shadow-md">
-        <div style={{ height: 'env(safe-area-inset-top)' }}></div>
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex justify-between items-center">       
-            <h1 className="text-2xl font-bold text-gray-900">JUST DO IT</h1>
-            <button 
-              onClick={() => navigate('/')} 
-              className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg shadow-sm hover:bg-gray-200 transition"
-            >
-              Back
-            </button>
-        </div>
-      </header>
-      
-      {/* Main Content Area */}
-      <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-6 pb-[env(safe-area-inset-bottom)]">
+ 
+     
         <div className="bg-white p-6 rounded-xl shadow-xl space-y-6"> {/* Added space-y-6 for vertical spacing */}
           <h2 className="text-3xl font-bold text-gray-800 mb-2">How to Use JustDoIt</h2>
           <p className="text-gray-600 mb-6">
@@ -101,8 +85,6 @@ function TutorialPage() {
           </Accordion>
 
         </div>
-      </main>
-    </div>
   );
 }
 
